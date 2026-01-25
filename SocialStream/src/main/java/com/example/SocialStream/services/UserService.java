@@ -1,5 +1,11 @@
 package com.example.SocialStream.services;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
 import com.example.SocialStream.DTO.CreateUserDTO;
 import com.example.SocialStream.DTO.PostResponseDTO;
 import com.example.SocialStream.DTO.UserDTO;
@@ -11,12 +17,8 @@ import com.example.SocialStream.exceptions.UserNotFoundException;
 import com.example.SocialStream.repositories.PostRepository;
 import com.example.SocialStream.repositories.RoleRepository;
 import com.example.SocialStream.repositories.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.util.List;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -52,5 +54,21 @@ public class UserService {
             .stream()
             .map(PostResponseDTO::new)
             .toList();
+    }
+    public User uploadProfilePicture(Long userId, String pictureUrl) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
+        user.setProfilePictureUrl(pictureUrl);
+        return userRepository.save(user);
+    }
+
+    public User getUserByEmail(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException("User not found with email: " + email));
+    }
+
+    public User getUserProfile(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
     }
 }

@@ -1,8 +1,7 @@
 package com.example.SocialStream.config;
 
-import com.example.SocialStream.auth.CustomUserDetailsService;
-import com.example.SocialStream.utils.JwtAuthenticationFilter;
-import com.example.SocialStream.utils.JwtUtil;
+import java.util.Arrays;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -22,7 +21,9 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
+import com.example.SocialStream.auth.CustomUserDetailsService;
+import com.example.SocialStream.utils.JwtAuthenticationFilter;
+import com.example.SocialStream.utils.JwtUtil;
 
 @Configuration
 @EnableMethodSecurity(prePostEnabled = true)
@@ -53,7 +54,16 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
+        // Use explicit origins instead of wildcard for Cloudflare Tunnel
+        configuration.setAllowedOrigins(Arrays.asList(
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://192.168.1.113:5173",
+            "http://192.168.1.113:5174",
+            "http://172.31.128.1:5173",
+            "http://172.31.128.1:5174",
+            "https://consent-afford-logic-playback.trycloudflare.com"
+        ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
@@ -77,7 +87,8 @@ public class SecurityConfig {
                                     "/error",
                                     "/ws/**",
                                     "/ws",
-                                    "/login"
+                                    "/login",
+                                    "/api/recommendations/trending"
                             ).permitAll();
                             authorize.anyRequest().authenticated();
                         }

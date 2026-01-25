@@ -1,14 +1,14 @@
 package com.example.SocialStream.auth;
 
-import com.example.SocialStream.entities.User;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import com.example.SocialStream.entities.User;
 
 public class CustomUserDetails implements UserDetails {
     private final User users;
@@ -32,7 +32,7 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public String getUsername() {
-        return "";
+        return users.getEmail();
     }
     public String getEmail(){ return users.getEmail();}
     public long getUserId(){

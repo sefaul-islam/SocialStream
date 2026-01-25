@@ -29,7 +29,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // Register the /ws endpoint for WebSocket connections
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOrigins(
+                    "http://localhost:5173",
+                    "http://localhost:5174",
+                    "http://192.168.1.113:5173",
+                    "http://192.168.1.113:5174",
+                    "http://172.31.128.1:5173",
+                    "http://172.31.128.1:5174",
+                    "https://consent-afford-logic-playback.trycloudflare.com"
+                )
                 .withSockJS();
     }
 
