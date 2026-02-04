@@ -17,6 +17,7 @@ const RoomInterior = ({ roomId, onLeave }) => {
   const {
     currentRoom,
     roomMembers,
+    onlineMembers,
     queue,
     roomState,
     isConnected,
@@ -385,17 +386,25 @@ const RoomInterior = ({ roomId, onLeave }) => {
               <p className="text-gray-400 text-center py-4">Loading members...</p>
             ) : (
               <div className="space-y-2">
-                {roomMembers.map((member) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg"
-                  >
-                    <span>{member.user?.username}</span>
-                    <span className="text-xs px-2 py-1 bg-purple-600/30 rounded">
-                      {member.role}
-                    </span>
-                  </div>
-                ))}
+                {roomMembers.map((member) => {
+                  const isOnline = onlineMembers.includes(member.user?.id);
+                  return (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${
+                          isOnline ? 'bg-green-400 animate-pulse' : 'bg-gray-600'
+                        }`}></span>
+                        <span>{member.user?.username}</span>
+                      </div>
+                      <span className="text-xs px-2 py-1 bg-purple-600/30 rounded">
+                        {member.role}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

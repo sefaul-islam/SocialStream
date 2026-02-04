@@ -97,6 +97,34 @@ public class RoomWebSocketController {
     }
 
     /**
+     * Handle member joining room
+     */
+    @MessageMapping("/room/{roomId}/join")
+    public void handleMemberJoin(
+            @DestinationVariable Long roomId,
+            @Payload Map<String, Object> payload,
+            Principal principal) {
+        
+        Long userId = getUserIdFromPrincipal(principal);
+        
+        playbackSyncService.memberJoined(roomId, userId);
+    }
+
+    /**
+     * Handle member leaving room
+     */
+    @MessageMapping("/room/{roomId}/leave")
+    public void handleMemberLeave(
+            @DestinationVariable Long roomId,
+            @Payload Map<String, Object> payload,
+            Principal principal) {
+        
+        Long userId = getUserIdFromPrincipal(principal);
+        
+        playbackSyncService.memberLeft(roomId, userId);
+    }
+
+    /**
      * Extract user ID from JWT principal
      */
     private Long getUserIdFromPrincipal(Principal principal) {

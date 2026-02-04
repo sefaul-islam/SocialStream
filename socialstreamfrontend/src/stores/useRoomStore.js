@@ -8,6 +8,7 @@ const useRoomStore = create((set, get) => ({
   // Room state
   currentRoom: null,
   roomMembers: [],
+  onlineMembers: [], // Array of user IDs who are currently online
   queue: [],
   roomState: null,
   isConnected: false,
@@ -22,6 +23,22 @@ const useRoomStore = create((set, get) => ({
 
   // Set room members
   setRoomMembers: (members) => set({ roomMembers: members }),
+
+  // Set online members
+  setOnlineMembers: (memberIds) => set({ onlineMembers: memberIds }),
+  
+  // Add online member
+  addOnlineMember: (userId) => set((state) => {
+    if (!state.onlineMembers.includes(userId)) {
+      return { onlineMembers: [...state.onlineMembers, userId] };
+    }
+    return state;
+  }),
+  
+  // Remove online member
+  removeOnlineMember: (userId) => set((state) => ({
+    onlineMembers: state.onlineMembers.filter(id => id !== userId)
+  })),
 
   // Set queue
   setQueue: (queue) => set({ queue: queue }),
@@ -52,6 +69,16 @@ const useRoomStore = create((set, get) => ({
     client.onConnect = () => {
       console.log('WebSocket connected to room:', roomId);
       set({ isConnected: true });
+      
+      // Broadcast that this user joined the room
+      const { currentUserId } = get();
+      if (currentUserId) {
+        client.publish({
+          destination: `/app/room/${roomId}/join`,
+          body: JSON.stringify({ userId: currentUserId }),
+        });
+        console.log('📢 Broadcasted join event for userId:', currentUserId);
+      }
 
       // Subscribe to room topic
       client.subscribe(`/topic/room/${roomId}`, (message) => {
@@ -109,6 +136,14 @@ const useRoomStore = create((set, get) => ({
               }
             }
             break;
+          case 'MEMBER_JOINED':
+            console.log('👋 Member joined:', data.username, 'userId:', data.userId);
+            get().addOnlineMember(data.userId);
+            break;
+          case 'MEMBER_LEFT':
+            console.log('👋 Member left:', data.username, 'userId:', data.userId);
+            get().removeOnlineMember(data.userId);
+            break;
           default:
             console.warn('Unknown action:', data.action);
         }
@@ -126,10 +161,23 @@ const useRoomStore = create((set, get) => ({
 
   // Disconnect from WebSocket
   disconnectWebSocket: () => {
-    const { stompClient } = get();
+    const { stompClient, currentUserId, currentRoom } = get();
+    if (stompClient && stompClient.connected && currentUserId && currentRoom) {
+      // Broadcast that this user is leaving
+      try {
+        stompClient.publish({
+          destination: `/app/room/${currentRoom.id}/leave`,
+          body: JSON.stringify({ userId: currentUserId }),
+        });
+        console.log('📢 Broadcasted leave event for userId:', currentUserId);
+      } catch (error) {
+        console.error('Error sending leave broadcast:', error);
+      }
+    }
+    
     if (stompClient) {
       stompClient.deactivate();
-      set({ stompClient: null, isConnected: false });
+      set({ stompClient: null, isConnected: false, onlineMembers: [] });
     }
   },
 
