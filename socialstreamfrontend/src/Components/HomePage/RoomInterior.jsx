@@ -18,10 +18,12 @@ const RoomInterior = ({ roomId, onLeave }) => {
     currentRoom,
     roomMembers,
     queue,
+    roomState,
     isConnected,
     setCurrentRoom,
     setQueue,
     setRoomMembers,
+    setRoomState,
     setCurrentUserId,
     connectWebSocket,
     disconnectWebSocket,
@@ -70,15 +72,52 @@ const RoomInterior = ({ roomId, onLeave }) => {
       const token = authService.getToken();
       connectWebSocket(roomId, token);
 
-      // Fetch room data
-      await fetchRoomData();
-      await fetchQueue();
-      await fetchMembers(currentUserId); // Pass userId directly
+      // Fetch complete room state (includes playback state + queue with votes)
+      await fetchRoomState();
+      
+      // Fetch members to determine user role
+      await fetchMembers(currentUserId);
 
       // Start periodic sync if user is host (every 30 seconds)
       // Check user role after fetching members
     } catch (error) {
       console.error('Failed to initialize room:', error);
+    }
+  };
+  
+  const fetchRoomState = async () => {
+    try {
+      const state = await roomService.getRoomState(roomId);
+      console.log('Fetched room state:', state);
+      
+      // Set room state (for video player sync popup)
+      setRoomState({
+        currentVideoId: state.currentVideoId,
+        playbackPosition: state.playbackPosition,
+        isPlaying: state.isPlaying,
+        lastSyncTimestamp: state.lastSyncTimestamp,
+      });
+      
+      // Set queue with real-time votes
+      setQueue(state.queue || []);
+      
+      // Set current video if one is playing
+      if (state.currentVideoId && state.queue) {
+        const currentQueueItem = state.queue.find(
+          item => item.video?.id === state.currentVideoId
+        );
+        if (currentQueueItem) {
+          setCurrentVideo(currentQueueItem.video);
+        }
+      }
+      
+      // Set basic room info
+      setCurrentRoom({ id: roomId, name: state.roomName || 'Room' });
+    } catch (error) {
+      console.error('Failed to fetch room state:', error);
+      // Fallback to old methods
+      await fetchRoomData();
+      await fetchQueue();
     }
   };
 
@@ -185,6 +224,7 @@ const RoomInterior = ({ roomId, onLeave }) => {
   };
 
   const handlePlayVideo = (video) => {
+    console.log('Playing video:', video);
     setCurrentVideo(video);
     sendChangeVideo(roomId, video.id);
   };

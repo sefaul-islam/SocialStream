@@ -23,6 +23,7 @@ public class RoomQueueService {
     private final VideoRepository videoRepository;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final RedisRoomStateService redisRoomStateService;
 
     /**
      * Add a video to the room queue
@@ -61,8 +62,11 @@ public class RoomQueueService {
 
         RoomQueue saved = roomQueueRepository.save(queueItem);
         
-        // Broadcast queue update to all room members
-        broadcastQueueUpdate(roomId, "QUEUE_UPDATED");
+        // Add to Redis queue with initial vote count
+        redisRoomStateService.addQueueItem(roomId, saved.getId(), 0);
+        
+        // Broadcast queue update to all room members with full queue data
+        broadcastQueueUpdateWithData(roomId, "QUEUE_UPDATED");
         
         return saved;
     }
@@ -84,17 +88,22 @@ public class RoomQueueService {
         }
 
         Long roomId = queueItem.getRoom().getId();
+        Long queueItemId = queueItem.getId();
+        
         roomQueueRepository.delete(queueItem);
         
-        // Broadcast queue update to all room members
-        broadcastQueueUpdate(roomId, "QUEUE_UPDATED");
+        // Remove from Redis queue
+        redisRoomStateService.removeQueueItem(roomId, queueItemId);
+        
+        // Broadcast queue update to all room members with full queue data
+        broadcastQueueUpdateWithData(roomId, "QUEUE_UPDATED");
     }
 
     /**
-     * Toggle vote on a queue item
+     * Toggle vote on a queue item (Real-time with Redis)
      */
     @Transactional
-    public RoomQueue toggleVote(Long queueId, Long userId) {
+    public Map<String, Object> toggleVote(Long queueId, Long userId) {
         RoomQueue queueItem = roomQueueRepository.findById(queueId)
                 .orElseThrow(() -> new RuntimeException("Queue item not found"));
 
@@ -102,34 +111,48 @@ public class RoomQueueService {
         RoomMember member = roomMemberRepository.findByRoomIdAndUserId(queueItem.getRoom().getId(), userId)
                 .orElseThrow(() -> new RuntimeException("User is not a member of this room"));
 
+        Long roomId = queueItem.getRoom().getId();
+        
+        // Toggle vote in Redis (real-time)
+        boolean voteAdded = redisRoomStateService.toggleVote(roomId, queueId, userId);
+        
+        // Also update database for persistence (async-style, fire and forget)
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-
-        // Check if user already voted
-        if (voteRepository.existsByUserIdAndQueueItemId(userId, queueId)) {
-            // Remove vote
-            voteRepository.deleteByUserIdAndQueueItemId(userId, queueId);
-            queueItem.setTotalVotes(queueItem.getTotalVotes() - 1);
+        
+        if (voteAdded) {
+            // Add vote to database
+            if (!voteRepository.existsByUserIdAndQueueItemId(userId, queueId)) {
+                Vote vote = new Vote();
+                vote.setUser(user);
+                vote.setQueueItem(queueItem);
+                vote.setVotedAt(LocalDateTime.now());
+                voteRepository.save(vote);
+                queueItem.setTotalVotes(queueItem.getTotalVotes() + 1);
+                roomQueueRepository.save(queueItem);
+            }
         } else {
-            // Add vote
-            Vote vote = new Vote();
-            vote.setUser(user);
-            vote.setQueueItem(queueItem);
-            vote.setVotedAt(LocalDateTime.now());
-            voteRepository.save(vote);
-            queueItem.setTotalVotes(queueItem.getTotalVotes() + 1);
+            // Remove vote from database
+            if (voteRepository.existsByUserIdAndQueueItemId(userId, queueId)) {
+                voteRepository.deleteByUserIdAndQueueItemId(userId, queueId);
+                queueItem.setTotalVotes(Math.max(0, queueItem.getTotalVotes() - 1));
+                roomQueueRepository.save(queueItem);
+            }
         }
-
-        RoomQueue saved = roomQueueRepository.save(queueItem);
         
-        // Broadcast queue update to all room members
-        broadcastQueueUpdate(queueItem.getRoom().getId(), "QUEUE_UPDATED");
+        // Broadcast queue update with full data (no refetch needed)
+        broadcastQueueUpdateWithData(roomId, "VOTE_UPDATED");
         
-        return saved;
+        // Return result
+        Map<String, Object> result = new HashMap<>();
+        result.put("voteAdded", voteAdded);
+        result.put("totalVotes", redisRoomStateService.getQueueItemVotes(roomId, queueId));
+        return result;
     }
 
     /**
      * Get queue for a room (ordered by votes DESC, then addedAt ASC)
+     * Votes are loaded from Redis for real-time accuracy
      */
     public List<RoomQueue> getQueue(Long roomId, Long userId) {
         // Validate user is a member
@@ -137,18 +160,64 @@ public class RoomQueueService {
             throw new RuntimeException("User is not a member of this room");
         }
 
-        return roomQueueRepository.findByRoomIdOrderByTotalVotesDescAddedAtAsc(roomId);
+        List<RoomQueue> queue = roomQueueRepository.findByRoomIdOrderByTotalVotesDescAddedAtAsc(roomId);
+        
+        // Get real-time votes from Redis
+        Map<Long, Integer> redisVotes = redisRoomStateService.getQueueVotes(roomId);
+        
+        // Update queue items with Redis vote counts
+        for (RoomQueue item : queue) {
+            Integer redisVoteCount = redisVotes.get(item.getId());
+            if (redisVoteCount != null) {
+                item.setTotalVotes(redisVoteCount);
+            }
+        }
+        
+        // Re-sort by votes (descending) and then by addedAt (ascending)
+        queue.sort((a, b) -> {
+            int voteCompare = b.getTotalVotes().compareTo(a.getTotalVotes());
+            if (voteCompare != 0) return voteCompare;
+            return a.getAddedAt().compareTo(b.getAddedAt());
+        });
+        
+        return queue;
+    }
+    
+    /**
+     * Initialize Redis queue from database (called when room is first accessed)
+     */
+    public void initializeRedisQueue(Long roomId) {
+        List<RoomQueue> queue = roomQueueRepository.findByRoomIdOrderByTotalVotesDescAddedAtAsc(roomId);
+        Map<Long, Integer> queueVotes = new HashMap<>();
+        
+        for (RoomQueue item : queue) {
+            queueVotes.put(item.getId(), item.getTotalVotes());
+        }
+        
+        redisRoomStateService.initializeQueue(roomId, queueVotes);
     }
 
     /**
-     * Check if user has voted on a queue item
+     * Check if user has voted on a queue item (check Redis first, fallback to DB)
      */
     public boolean hasUserVoted(Long queueId, Long userId) {
-        return voteRepository.existsByUserIdAndQueueItemId(userId, queueId);
+        // Get room ID from queue item
+        RoomQueue queueItem = roomQueueRepository.findById(queueId)
+                .orElseThrow(() -> new RuntimeException("Queue item not found"));
+        
+        // Check Redis first for real-time data
+        boolean votedInRedis = redisRoomStateService.hasUserVoted(queueItem.getRoom().getId(), queueId, userId);
+        
+        // If not in Redis, check database as fallback
+        if (!votedInRedis) {
+            return voteRepository.existsByUserIdAndQueueItemId(userId, queueId);
+        }
+        
+        return votedInRedis;
     }
 
     /**
-     * Broadcast queue update to all room members via WebSocket
+     * Broadcast queue update to all room members via WebSocket (legacy - simple notification)
      */
     private void broadcastQueueUpdate(Long roomId, String action) {
         Map<String, Object> message = new HashMap<>();
@@ -156,5 +225,56 @@ public class RoomQueueService {
         message.put("timestamp", LocalDateTime.now().toString());
         
         messagingTemplate.convertAndSend("/topic/room/" + roomId, (Object) message);
+    }
+    
+    /**
+     * Broadcast queue update with full queue data (no refetch needed)
+     */
+    private void broadcastQueueUpdateWithData(Long roomId, String action) {
+        // Get queue items from database
+        List<RoomQueue> queue = roomQueueRepository.findByRoomIdOrderByTotalVotesDescAddedAtAsc(roomId);
+        
+        // Get real-time votes from Redis
+        Map<Long, Integer> redisVotes = redisRoomStateService.getQueueVotes(roomId);
+        
+        // Update queue items with Redis vote counts
+        for (RoomQueue item : queue) {
+            Integer redisVoteCount = redisVotes.get(item.getId());
+            if (redisVoteCount != null) {
+                item.setTotalVotes(redisVoteCount);
+            }
+        }
+        
+        // Re-sort by votes (descending) and then by addedAt (ascending)
+        queue.sort((a, b) -> {
+            int voteCompare = b.getTotalVotes().compareTo(a.getTotalVotes());
+            if (voteCompare != 0) return voteCompare;
+            return a.getAddedAt().compareTo(b.getAddedAt());
+        });
+        
+        Map<String, Object> message = new HashMap<>();
+        message.put("action", action);
+        message.put("queue", queue);
+        message.put("timestamp", LocalDateTime.now().toString());
+        
+        messagingTemplate.convertAndSend("/topic/room/" + roomId, (Object) message);
+    }
+    
+    /**
+     * Persist Redis votes back to database (called on room close or periodically)
+     */
+    @Transactional
+    public void persistVotesToDatabase(Long roomId) {
+        Map<Long, Integer> redisVotes = redisRoomStateService.getQueueVotes(roomId);
+        
+        for (Map.Entry<Long, Integer> entry : redisVotes.entrySet()) {
+            Long queueItemId = entry.getKey();
+            Integer voteCount = entry.getValue();
+            
+            roomQueueRepository.findById(queueItemId).ifPresent(queueItem -> {
+                queueItem.setTotalVotes(voteCount);
+                roomQueueRepository.save(queueItem);
+            });
+        }
     }
 }

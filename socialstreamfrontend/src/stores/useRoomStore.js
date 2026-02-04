@@ -56,6 +56,7 @@ const useRoomStore = create((set, get) => ({
       // Subscribe to room topic
       client.subscribe(`/topic/room/${roomId}`, (message) => {
         const data = JSON.parse(message.body);
+        console.log('[WebSocket] Received message:', data);
         
         // Ignore messages sent by current user to prevent infinite loops
         const { currentUserId } = get();
@@ -69,25 +70,43 @@ const useRoomStore = create((set, get) => ({
         
         switch (data.action) {
           case 'PLAY':
+            console.log('[Viewer] Received PLAY event at position:', data.position);
             videoStore.handlePlayEvent(data.position, data.videoId);
             break;
           case 'PAUSE':
+            console.log('[Viewer] Received PAUSE event at position:', data.position);
             videoStore.handlePauseEvent(data.position, data.videoId);
             break;
           case 'SEEK':
+            console.log('[Viewer] Received SEEK event to position:', data.position);
             videoStore.handleSeekEvent(data.position);
             break;
           case 'CHANGE_VIDEO':
+            console.log('[Viewer] Received CHANGE_VIDEO event for videoId:', data.videoId);
             videoStore.handleChangeVideoEvent(data.videoId);
             break;
           case 'SYNC':
+            console.log('[Viewer] Received SYNC event at position:', data.position);
             videoStore.handleSyncEvent(data.position, data.videoId);
             break;
           case 'QUEUE_UPDATED':
-            // Trigger queue refresh callback if set
+            // Trigger queue refresh callback if set (legacy behavior)
             const { onQueueUpdate } = get();
             if (onQueueUpdate) {
               onQueueUpdate();
+            }
+            break;
+          case 'VOTE_UPDATED':
+            // Real-time queue update with full data - no refetch needed!
+            if (data.queue) {
+              set({ queue: data.queue });
+              console.log('Queue updated in real-time with votes:', data.queue);
+            } else {
+              // Fallback to callback if queue data not included
+              const { onQueueUpdate } = get();
+              if (onQueueUpdate) {
+                onQueueUpdate();
+              }
             }
             break;
           default:
@@ -116,56 +135,81 @@ const useRoomStore = create((set, get) => ({
 
   // Send play command (Host only)
   sendPlay: (roomId, position) => {
-    const { stompClient } = get();
+    const { stompClient, isConnected } = get();
+    console.log('[sendPlay] Called - roomId:', roomId, 'position:', position, 'connected:', isConnected);
+    
     if (stompClient && stompClient.connected) {
+      console.log('[sendPlay] Publishing to /app/room/' + roomId + '/play');
       stompClient.publish({
         destination: `/app/room/${roomId}/play`,
         body: JSON.stringify({ position }),
       });
+    } else {
+      console.error('[sendPlay] Cannot send - WebSocket not connected');
     }
   },
 
   // Send pause command (Host only)
   sendPause: (roomId, position) => {
-    const { stompClient } = get();
+    const { stompClient, isConnected } = get();
+    console.log('[sendPause] Called - roomId:', roomId, 'position:', position, 'connected:', isConnected);
+    
     if (stompClient && stompClient.connected) {
+      console.log('[sendPause] Publishing to /app/room/' + roomId + '/pause');
       stompClient.publish({
         destination: `/app/room/${roomId}/pause`,
         body: JSON.stringify({ position }),
       });
+    } else {
+      console.error('[sendPause] Cannot send - WebSocket not connected');
     }
   },
 
   // Send seek command (Host only)
   sendSeek: (roomId, position) => {
-    const { stompClient } = get();
+    const { stompClient, isConnected } = get();
+    console.log('[sendSeek] Called - roomId:', roomId, 'position:', position, 'connected:', isConnected);
+    
     if (stompClient && stompClient.connected) {
+      console.log('[sendSeek] Publishing to /app/room/' + roomId + '/seek');
       stompClient.publish({
         destination: `/app/room/${roomId}/seek`,
         body: JSON.stringify({ position }),
       });
+    } else {
+      console.error('[sendSeek] Cannot send - WebSocket not connected');
     }
   },
 
   // Send change video command (Host only)
   sendChangeVideo: (roomId, videoId) => {
-    const { stompClient } = get();
+    const { stompClient, isConnected } = get();
+    console.log('[sendChangeVideo] Called - roomId:', roomId, 'videoId:', videoId, 'connected:', isConnected);
+    
     if (stompClient && stompClient.connected) {
+      console.log('[sendChangeVideo] Publishing to /app/room/' + roomId + '/changeVideo');
       stompClient.publish({
         destination: `/app/room/${roomId}/changeVideo`,
         body: JSON.stringify({ videoId }),
       });
+    } else {
+      console.error('[sendChangeVideo] Cannot send - WebSocket not connected');
     }
   },
 
   // Send sync command (Host only, periodic)
   sendSync: (roomId, position) => {
-    const { stompClient } = get();
+    const { stompClient, isConnected } = get();
+    console.log('[sendSync] Called - roomId:', roomId, 'position:', position, 'connected:', isConnected);
+    
     if (stompClient && stompClient.connected) {
+      console.log('[sendSync] Publishing to /app/room/' + roomId + '/sync');
       stompClient.publish({
         destination: `/app/room/${roomId}/sync`,
         body: JSON.stringify({ position }),
       });
+    } else {
+      console.error('[sendSync] Cannot send - WebSocket not connected');
     }
   },
 
@@ -199,9 +243,14 @@ const useVideoStore = create((set, get) => ({
   // Handle play event from WebSocket
   handlePlayEvent: (position, videoId) => {
     const { playerRef, currentVideo } = get();
+    console.log('handlePlayEvent - playerRef exists:', !!playerRef, 'currentVideo id:', currentVideo?.id, 'expected videoId:', videoId);
     if (playerRef && currentVideo?.id === videoId) {
+      console.log('Playing video from position:', position);
       playerRef.currentTime(position);
-      playerRef.play();
+      const playPromise = playerRef.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(err => console.error('Play failed:', err));
+      }
       set({ isPlaying: true, playbackPosition: position, lastSyncTime: Date.now() });
     }
   },
@@ -209,7 +258,9 @@ const useVideoStore = create((set, get) => ({
   // Handle pause event from WebSocket
   handlePauseEvent: (position, videoId) => {
     const { playerRef, currentVideo } = get();
+    console.log('handlePauseEvent - playerRef exists:', !!playerRef, 'currentVideo id:', currentVideo?.id, 'expected videoId:', videoId);
     if (playerRef && currentVideo?.id === videoId) {
+      console.log('Pausing video at position:', position);
       playerRef.currentTime(position);
       playerRef.pause();
       set({ isPlaying: false, playbackPosition: position, lastSyncTime: Date.now() });
@@ -219,6 +270,7 @@ const useVideoStore = create((set, get) => ({
   // Handle seek event from WebSocket
   handleSeekEvent: (position) => {
     const { playerRef } = get();
+    console.log('handleSeekEvent - seeking to:', position, 'playerRef exists:', !!playerRef);
     if (playerRef) {
       playerRef.currentTime(position);
       set({ playbackPosition: position, lastSyncTime: Date.now() });

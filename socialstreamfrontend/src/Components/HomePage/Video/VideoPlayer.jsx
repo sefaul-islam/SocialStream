@@ -3,17 +3,43 @@ import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
 import './VideoPlayer.css';
 import { useVideoStore, useRoomStore } from '../../../stores/useRoomStore';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
   const videoRef = useRef(null);
   const playerRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
+  const [showSyncPopup, setShowSyncPopup] = useState(false);
+  const [hasUserResponded, setHasUserResponded] = useState(false);
   const syncIntervalRef = useRef(null);
   const ignoreEventsRef = useRef(false);
 
-  // Zustand stores
-  const { setPlayerRef, updatePosition, setIsPlaying } = useVideoStore();
-  const { sendPlay, sendPause, sendSeek, sendSync } = useRoomStore();
+  // Zustand stores - use selective subscriptions to avoid unnecessary re-renders
+  const setPlayerRef = useVideoStore(state => state.setPlayerRef);
+  const updatePosition = useVideoStore(state => state.updatePosition);
+  const setIsPlaying = useVideoStore(state => state.setIsPlaying);
+  const currentVideo = useVideoStore(state => state.currentVideo);
+  
+  const sendPlay = useRoomStore(state => state.sendPlay);
+  const sendPause = useRoomStore(state => state.sendPause);
+  const sendSeek = useRoomStore(state => state.sendSeek);
+  const sendSync = useRoomStore(state => state.sendSync);
+  const roomState = useRoomStore(state => state.roomState);
+
+  // Only log when video ID changes, not on every render
+  const videoIdRef = useRef(video?.id);
+  useEffect(() => {
+    if (videoIdRef.current !== video?.id) {
+      videoIdRef.current = video?.id;
+      console.log('VideoPlayer video changed:', {
+        videoId: video?.id,
+        videoTitle: video?.title,
+        isHost,
+        roomId,
+        videoUrl
+      });
+    }
+  }, [video?.id]);
 
   // Determine video source with fallback options
   // Backend returns camelCase (mediaUrl), but some legacy code uses lowercase (mediaurl)
@@ -28,6 +54,65 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
     if (src.includes('.webm')) return 'video/webm';
     return 'video/mp4'; // Default fallback
   };
+  
+  // Check if user should see sync popup (non-host joining during playback)
+  // Only show if video is playing AND position is greater than 0 seconds
+  useEffect(() => {
+    const shouldShowPopup = 
+      roomId && // Must be in a room
+      !isHost && // Must be a viewer
+      !hasUserResponded && // Haven't responded yet
+      roomState && 
+      roomState.isPlaying && 
+      roomState.playbackPosition > 0 && // Only show if video has progressed
+      isReady;
+    
+    if (shouldShowPopup) {
+      console.log('Showing sync popup - position:', roomState.playbackPosition);
+      setShowSyncPopup(true);
+      
+      // Auto-dismiss after 30 seconds with default action (sync)
+      const timeout = setTimeout(() => {
+        if (!hasUserResponded) {
+          handleSyncAccept();
+        }
+      }, 30000);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [isHost, hasUserResponded, roomState, isReady, roomId]);
+  
+  // Handle sync acceptance
+  const handleSyncAccept = () => {
+    setHasUserResponded(true);
+    setShowSyncPopup(false);
+    
+    const player = playerRef.current;
+    if (player && roomState) {
+      ignoreEventsRef.current = true;
+      
+      // Sync to current position
+      if (roomState.playbackPosition) {
+        player.currentTime(roomState.playbackPosition);
+      }
+      
+      // Sync play state
+      if (roomState.isPlaying) {
+        player.play().catch(err => console.error('Auto-play failed:', err));
+      }
+      
+      setTimeout(() => {
+        ignoreEventsRef.current = false;
+      }, 500);
+    }
+  };
+  
+  // Handle sync decline
+  const handleSyncDecline = () => {
+    setHasUserResponded(true);
+    setShowSyncPopup(false);
+    // User can browse queue or just watch from beginning
+  };
 
   useEffect(() => {
     // Make sure Video.js player is only initialized once
@@ -35,8 +120,11 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
       const videoElement = videoRef.current;
 
       try {
+        console.log('Initializing Video.js with source:', videoSource);
+        console.log('isHost:', isHost, 'roomId:', roomId);
+        
         const player = playerRef.current = videojs(videoElement, {
-          controls: isHost, // Only host can control
+          controls: true, // Always show controls so play button appears
           autoplay: false,
           preload: 'auto',
           fluid: true,
@@ -62,13 +150,15 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
         // Add error handler
         player.on('error', function() {
           const error = player.error();
-          console.error('Video.js Error:', error);
+          console.error('Video.js Error - Code:', error?.code);
+          console.error('Error message:', error?.message);
+          console.error('Video URL attempted:', videoSource);
           
           if (error && error.code === 4) {
             console.error('Media source not supported. Video URL:', videoSource);
-            console.error('Attempting to use native video element...');
+            console.error('Attempting to use native video element with mp4 fallback...');
             
-            // Fallback: try loading with native video element
+            // Fallback: try loading with native video element as mp4
             if (videoSource) {
               player.src({
                 src: videoSource,
@@ -77,9 +167,26 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
             }
           }
         });
+        
+        // Add loadstart listener to track when video starts loading
+        player.on('loadstart', function() {
+          console.log('Video loading started:', videoSource);
+        });
+        
+        // Add canplay listener to confirm video is playable
+        player.on('canplay', function() {
+          console.log('Video is ready to play - Duration:', player.duration());
+        });
+        
+        // Add loadedmetadata to confirm video metadata is loaded
+        player.on('loadedmetadata', function() {
+          console.log('Video metadata loaded - Duration:', player.duration());
+        });
 
         player.ready(() => {
           console.log('Video.js player is ready');
+          console.log('Room context - isHost:', isHost, 'roomId:', roomId);
+          console.log('Video source:', videoSource);
           setIsReady(true);
           
           // Set player reference in Zustand store
@@ -137,9 +244,14 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
             videojs.registerComponent('SkipBackwardButton', SkipBackwardButton);
             videojs.registerComponent('SkipForwardButton', SkipForwardButton);
 
-            // Add buttons to control bar
-            player.getChild('controlBar').addChild('SkipBackwardButton', {}, 0);
-            player.getChild('controlBar').addChild('SkipForwardButton', {}, 1);
+            // Add buttons to control bar if it exists
+            const controlBar = player.getChild('controlBar');
+            if (controlBar) {
+              controlBar.addChild('SkipBackwardButton', {}, 0);
+              controlBar.addChild('SkipForwardButton', {}, 1);
+            } else {
+              console.warn('Control bar not found, skipping custom buttons');
+            }
           }
         });
 
@@ -148,22 +260,25 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
           player.on('play', () => {
             if (!ignoreEventsRef.current) {
               const position = player.currentTime();
+              console.log('[Host] Broadcasting PLAY at position:', position);
               sendPlay(roomId, position);
-              setIsPlaying(true);
+              // Don't update state here - let WebSocket handler do it to avoid loops
             }
           });
 
           player.on('pause', () => {
             if (!ignoreEventsRef.current) {
               const position = player.currentTime();
+              console.log('[Host] Broadcasting PAUSE at position:', position);
               sendPause(roomId, position);
-              setIsPlaying(false);
+              // Don't update state here - let WebSocket handler do it to avoid loops
             }
           });
 
           player.on('seeked', () => {
             if (!ignoreEventsRef.current) {
               const position = player.currentTime();
+              console.log('[Host] Broadcasting SEEK to position:', position);
               sendSeek(roomId, position);
               updatePosition(position);
             }
@@ -196,13 +311,31 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
             }
           });
 
-          // Start periodic sync (every 60 seconds)
+          // Start periodic sync (every 30 seconds)
           syncIntervalRef.current = setInterval(() => {
             const position = player.currentTime();
+            console.log('[Host] Broadcasting SYNC at position:', position);
             sendSync(roomId, position);
-          }, 60000);
+          }, 30000);
+        } else if (roomId) {
+          // Viewers in room: listen to video events for debugging
+          console.log('[Viewer] Setting up event listeners');
+          
+          player.on('play', () => {
+            console.log('[Viewer] Local play event triggered');
+          });
+          
+          player.on('pause', () => {
+            console.log('[Viewer] Local pause event triggered');
+          });
+          
+          player.on('timeupdate', () => {
+            const position = player.currentTime();
+            updatePosition(position);
+          });
         } else {
-          // Non-host: just update local position
+          // Solo mode: just update local position
+          console.log('[Solo] Setting up timeupdate listener');
           player.on('timeupdate', () => {
             const position = player.currentTime();
             updatePosition(position);
@@ -219,7 +352,7 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
         clearInterval(syncIntervalRef.current);
       }
     };
-  }, [posterImage, isHost, roomId]);
+  }, [posterImage, isHost, roomId]); // Removed currentVideo to prevent re-initialization loop
 
   // Update video source when video changes
   useEffect(() => {
@@ -234,6 +367,7 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
       // Detect video type and set source
       const sourceType = getVideoType(videoSource);
       console.log('Detected video type:', sourceType);
+      console.log('Setting video source:', videoSource);
       
       player.src({
         src: videoSource,
@@ -242,10 +376,10 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
       
       player.load();
       
-      // Reset ignore flag after a short delay
+      // Reset ignore flag after a delay
       setTimeout(() => {
         ignoreEventsRef.current = false;
-      }, 500);
+      }, 1000);
     }
   }, [videoSource, isReady, video]);
 
@@ -261,7 +395,7 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
   }, []);
 
   return (
-    <div data-vjs-player className="w-full max-w-full mx-auto">
+    <div data-vjs-player className="w-full max-w-full mx-auto relative">
       {!isHost && (
         <div className="mb-2 text-center text-sm text-yellow-400">
           ⚠️ Viewer Mode - Only the host can control playback
@@ -272,6 +406,62 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
           ⚠️ No video source available. The video URL might be missing from the database.
         </div>
       )}
+      
+      {/* Sync Popup */}
+      <AnimatePresence>
+        {showSyncPopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.8, y: 20 }}
+              className="bg-gradient-to-br from-gray-900 to-gray-800 p-8 rounded-2xl border border-green-500/30 max-w-md mx-4 shadow-2xl"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 bg-green-500/20 rounded-full flex items-center justify-center">
+                  <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-2">Video in Progress</h3>
+                <p className="text-gray-300 mb-1">
+                  {video?.title || 'A video'} is currently playing
+                </p>
+                <p className="text-sm text-gray-400">
+                  at {Math.floor((roomState?.playbackPosition || 0) / 60)}:{String(Math.floor((roomState?.playbackPosition || 0) % 60)).padStart(2, '0')}
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={handleSyncAccept}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-green-500/50 transform hover:scale-[1.02]"
+                >
+                  Join Playback
+                </button>
+                
+                <button
+                  onClick={handleSyncDecline}
+                  className="w-full px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-all duration-200"
+                >
+                  Browse Queue
+                </button>
+              </div>
+              
+              <p className="text-xs text-gray-500 text-center mt-4">
+                Auto-syncing in 30 seconds...
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
       <video
         ref={videoRef}
         className="video-js vjs-big-play-centered"

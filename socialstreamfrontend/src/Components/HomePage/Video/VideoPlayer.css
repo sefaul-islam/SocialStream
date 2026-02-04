@@ -90,10 +90,25 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  transition: opacity 0.4s ease, transform 0.3s ease;
+}
+
+/* Hide big play button smoothly when playing */
+.video-js.vjs-playing .vjs-big-play-button {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.8);
 }
 
 .video-js .vjs-big-play-button:hover {
   background-color: #10b981;
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
+}
+
+.video-js .vjs-big-play-button:active {
+  transform: translate(-50%, -50%) scale(0.95);
 }
 
 .video-js .vjs-big-play-button .vjs-icon-placeholder:before {

@@ -18,6 +18,8 @@ public class RedisRoomStateService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     private static final String ROOM_STATE_PREFIX = "room:state:";
+    private static final String ROOM_QUEUE_PREFIX = "room:queue:";
+    private static final String ROOM_VOTES_PREFIX = "room:votes:";
     private static final long EXPIRATION_HOURS = 24; // Expire after 24 hours of inactivity
 
     /**
@@ -172,5 +174,197 @@ public class RedisRoomStateService {
         state.put("isPlaying", false);
         state.put("lastSyncTimestamp", LocalDateTime.now().toString());
         return state;
+    }
+
+    // ==================== Queue Vote Management ====================
+    
+    /**
+     * Toggle vote for a queue item (add if not exists, remove if exists)
+     * Returns true if vote was added, false if removed
+     */
+    public boolean toggleVote(Long roomId, Long queueItemId, Long userId) {
+        try {
+            String votesKey = ROOM_VOTES_PREFIX + roomId + ":" + userId;
+            @SuppressWarnings("unchecked")
+            Map<String, Boolean> userVotes = (Map<String, Boolean>) redisTemplate.opsForValue().get(votesKey);
+            
+            if (userVotes == null) {
+                userVotes = new HashMap<>();
+            }
+            
+            String queueItemKey = String.valueOf(queueItemId);
+            boolean hasVoted = userVotes.containsKey(queueItemKey) && userVotes.get(queueItemKey);
+            
+            if (hasVoted) {
+                // Remove vote
+                userVotes.put(queueItemKey, false);
+                decrementQueueVote(roomId, queueItemId);
+                redisTemplate.opsForValue().set(votesKey, userVotes, EXPIRATION_HOURS, TimeUnit.HOURS);
+                return false;
+            } else {
+                // Add vote
+                userVotes.put(queueItemKey, true);
+                incrementQueueVote(roomId, queueItemId);
+                redisTemplate.opsForValue().set(votesKey, userVotes, EXPIRATION_HOURS, TimeUnit.HOURS);
+                return true;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to toggle vote in Redis: {}", e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Increment vote count for a queue item
+     */
+    private void incrementQueueVote(Long roomId, Long queueItemId) {
+        try {
+            String queueKey = ROOM_QUEUE_PREFIX + roomId;
+            redisTemplate.opsForZSet().incrementScore(queueKey, String.valueOf(queueItemId), 1.0);
+            redisTemplate.expire(queueKey, EXPIRATION_HOURS, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.warn("Failed to increment queue vote: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Decrement vote count for a queue item
+     */
+    private void decrementQueueVote(Long roomId, Long queueItemId) {
+        try {
+            String queueKey = ROOM_QUEUE_PREFIX + roomId;
+            redisTemplate.opsForZSet().incrementScore(queueKey, String.valueOf(queueItemId), -1.0);
+            redisTemplate.expire(queueKey, EXPIRATION_HOURS, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.warn("Failed to decrement queue vote: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Get vote count for a specific queue item
+     */
+    public Integer getQueueItemVotes(Long roomId, Long queueItemId) {
+        try {
+            String queueKey = ROOM_QUEUE_PREFIX + roomId;
+            Double score = redisTemplate.opsForZSet().score(queueKey, String.valueOf(queueItemId));
+            return score != null ? score.intValue() : 0;
+        } catch (Exception e) {
+            log.warn("Failed to get queue item votes: {}", e.getMessage());
+            return 0;
+        }
+    }
+    
+    /**
+     * Get all queue items with their vote counts, sorted by votes (descending)
+     */
+    public Map<Long, Integer> getQueueVotes(Long roomId) {
+        try {
+            String queueKey = ROOM_QUEUE_PREFIX + roomId;
+            // Get all items sorted by score descending
+            var items = redisTemplate.opsForZSet().reverseRangeWithScores(queueKey, 0, -1);
+            
+            Map<Long, Integer> votes = new HashMap<>();
+            if (items != null) {
+                for (var item : items) {
+                    Long queueItemId = Long.valueOf((String) item.getValue());
+                    Integer voteCount = item.getScore() != null ? item.getScore().intValue() : 0;
+                    votes.put(queueItemId, voteCount);
+                }
+            }
+            return votes;
+        } catch (Exception e) {
+            log.warn("Failed to get queue votes: {}", e.getMessage());
+            return new HashMap<>();
+        }
+    }
+    
+    /**
+     * Check if user has voted for a queue item
+     */
+    public boolean hasUserVoted(Long roomId, Long queueItemId, Long userId) {
+        try {
+            String votesKey = ROOM_VOTES_PREFIX + roomId + ":" + userId;
+            @SuppressWarnings("unchecked")
+            Map<String, Boolean> userVotes = (Map<String, Boolean>) redisTemplate.opsForValue().get(votesKey);
+            
+            if (userVotes == null) {
+                return false;
+            }
+            
+            String queueItemKey = String.valueOf(queueItemId);
+            return userVotes.containsKey(queueItemKey) && userVotes.get(queueItemKey);
+        } catch (Exception e) {
+            log.warn("Failed to check user vote: {}", e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Add queue item to Redis (when new video added to queue)
+     */
+    public void addQueueItem(Long roomId, Long queueItemId, Integer initialVotes) {
+        try {
+            String queueKey = ROOM_QUEUE_PREFIX + roomId;
+            redisTemplate.opsForZSet().add(queueKey, String.valueOf(queueItemId), initialVotes.doubleValue());
+            redisTemplate.expire(queueKey, EXPIRATION_HOURS, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.warn("Failed to add queue item to Redis: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Remove queue item from Redis
+     */
+    public void removeQueueItem(Long roomId, Long queueItemId) {
+        try {
+            String queueKey = ROOM_QUEUE_PREFIX + roomId;
+            redisTemplate.opsForZSet().remove(queueKey, String.valueOf(queueItemId));
+        } catch (Exception e) {
+            log.warn("Failed to remove queue item from Redis: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Initialize queue in Redis from database
+     */
+    public void initializeQueue(Long roomId, Map<Long, Integer> queueVotes) {
+        try {
+            String queueKey = ROOM_QUEUE_PREFIX + roomId;
+            // Clear existing queue
+            redisTemplate.delete(queueKey);
+            
+            // Add all items with their vote counts
+            for (Map.Entry<Long, Integer> entry : queueVotes.entrySet()) {
+                redisTemplate.opsForZSet().add(queueKey, String.valueOf(entry.getKey()), entry.getValue().doubleValue());
+            }
+            
+            redisTemplate.expire(queueKey, EXPIRATION_HOURS, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.warn("Failed to initialize queue in Redis: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Get user's votes for a room (for vote persistence)
+     */
+    public Map<Long, Boolean> getUserVotes(Long roomId, Long userId) {
+        try {
+            String votesKey = ROOM_VOTES_PREFIX + roomId + ":" + userId;
+            @SuppressWarnings("unchecked")
+            Map<String, Boolean> userVotes = (Map<String, Boolean>) redisTemplate.opsForValue().get(votesKey);
+            
+            if (userVotes == null) {
+                return new HashMap<>();
+            }
+            
+            Map<Long, Boolean> result = new HashMap<>();
+            for (Map.Entry<String, Boolean> entry : userVotes.entrySet()) {
+                result.put(Long.valueOf(entry.getKey()), entry.getValue());
+            }
+            return result;
+        } catch (Exception e) {
+            log.warn("Failed to get user votes: {}", e.getMessage());
+            return new HashMap<>();
+        }
     }
 }

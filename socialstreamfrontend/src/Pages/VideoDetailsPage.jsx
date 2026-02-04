@@ -81,7 +81,13 @@ const VideoDetailsPage = () => {
       {/* Video Player Section */}
       <div className="pt-20 px-6">
         <div className="max-w-7xl mx-auto overflow-hidden rounded-xl">
-          <VideoPlayer videoUrl={videoData.videoUrl} thumbnail={videoData.thumbnail} />
+          <VideoPlayer 
+            video={videoData} 
+            videoUrl={videoData.videoUrl} 
+            thumbnail={videoData.thumbnail}
+            isHost={true}
+            roomId={null}
+          />
         </div>
       </div>
 

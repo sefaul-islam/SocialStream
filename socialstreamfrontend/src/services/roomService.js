@@ -291,6 +291,36 @@ class RoomService {
       return false;
     }
   }
+
+  /**
+   * Get complete room state (playback + queue with real-time votes)
+   * @param {number} roomId - Room ID
+   * @returns {Promise<Object>} Room state with playback info and queue
+   */
+  async getRoomState(roomId) {
+    try {
+      const response = await roomAxios.get(`/${roomId}/state`);
+      return response.data;
+    } catch (error) {
+      console.error('Get room state error:', error);
+      throw new Error(error.response?.data?.message || 'Failed to fetch room state');
+    }
+  }
+
+  /**
+   * Close room and persist data (Host only)
+   * @param {number} roomId - Room ID
+   * @returns {Promise<string>} Success message
+   */
+  async closeRoom(roomId) {
+    try {
+      const response = await roomAxios.post(`/${roomId}/close`);
+      return response.data;
+    } catch (error) {
+      console.error('Close room error:', error);
+      throw new Error(error.response?.data?.message || 'Failed to close room');
+    }
+  }
 }
 
 // Export singleton instance

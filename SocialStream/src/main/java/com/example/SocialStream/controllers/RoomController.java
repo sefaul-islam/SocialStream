@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 import com.example.SocialStream.DTO.CreateRoomDTO;
 import com.example.SocialStream.DTO.RoomDTO;
+import com.example.SocialStream.DTO.RoomStateDTO;
 import com.example.SocialStream.auth.CustomUserDetails;
 import com.example.SocialStream.services.RoomServices;
 
@@ -80,5 +81,21 @@ public class RoomController {
         Map<String, Boolean> response = new HashMap<>();
         response.put("isMember", isMember);
         return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/{roomId}/state")
+    public ResponseEntity<RoomStateDTO> getRoomState(
+            @PathVariable Long roomId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        RoomStateDTO state = roomServices.getRoomState(roomId, userDetails.getUserId());
+        return ResponseEntity.ok(state);
+    }
+    
+    @PostMapping("/{roomId}/close")
+    public ResponseEntity<String> closeRoom(
+            @PathVariable Long roomId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        roomServices.closeRoom(roomId, userDetails.getUserId());
+        return ResponseEntity.ok("Room closed successfully");
     }
 }

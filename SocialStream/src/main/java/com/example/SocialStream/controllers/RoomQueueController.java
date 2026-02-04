@@ -65,13 +65,13 @@ public class RoomQueueController {
      * Toggle vote on queue item
      */
     @PostMapping("/{queueId}/vote")
-    public ResponseEntity<RoomQueue> toggleVote(
+    public ResponseEntity<Map<String, Object>> toggleVote(
             @PathVariable Long roomId,
             @PathVariable Long queueId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         
-        RoomQueue queueItem = roomQueueService.toggleVote(queueId, userDetails.getUserId());
-        return ResponseEntity.ok(queueItem);
+        Map<String, Object> result = roomQueueService.toggleVote(queueId, userDetails.getUserId());
+        return ResponseEntity.ok(result);
     }
 
     /**
