@@ -255,104 +255,151 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
           }
         });
 
-        // Host event listeners - send WebSocket events
-        if (isHost && roomId) {
-          player.on('play', () => {
-            if (!ignoreEventsRef.current) {
-              const position = player.currentTime();
-              console.log('[Host] Broadcasting PLAY at position:', position);
-              sendPlay(roomId, position);
-              // Don't update state here - let WebSocket handler do it to avoid loops
-            }
-          });
-
-          player.on('pause', () => {
-            if (!ignoreEventsRef.current) {
-              const position = player.currentTime();
-              console.log('[Host] Broadcasting PAUSE at position:', position);
-              sendPause(roomId, position);
-              // Don't update state here - let WebSocket handler do it to avoid loops
-            }
-          });
-
-          player.on('seeked', () => {
-            if (!ignoreEventsRef.current) {
-              const position = player.currentTime();
-              console.log('[Host] Broadcasting SEEK to position:', position);
-              sendSeek(roomId, position);
-              updatePosition(position);
-            }
-          });
-
-          // Update position periodically
-          player.on('timeupdate', () => {
-            const position = player.currentTime();
-            updatePosition(position);
-          });
-
-          // Set up keyboard shortcuts (only for host)
-          player.on('keydown', function(event) {
-            // Arrow Left: Skip backward 5 seconds
-            if (event.which === 37) {
-              event.preventDefault();
-              const currentTime = player.currentTime();
-              const newTime = Math.max(0, currentTime - 5);
-              player.currentTime(newTime);
-              sendSeek(roomId, newTime);
-            }
-            // Arrow Right: Skip forward 5 seconds
-            if (event.which === 39) {
-              event.preventDefault();
-              const currentTime = player.currentTime();
-              const duration = player.duration();
-              const newTime = Math.min(duration || currentTime + 5, currentTime + 5);
-              player.currentTime(newTime);
-              sendSeek(roomId, newTime);
-            }
-          });
-
-          // Start periodic sync (every 30 seconds)
-          syncIntervalRef.current = setInterval(() => {
-            const position = player.currentTime();
-            console.log('[Host] Broadcasting SYNC at position:', position);
-            sendSync(roomId, position);
-          }, 30000);
-        } else if (roomId) {
-          // Viewers in room: listen to video events for debugging
-          console.log('[Viewer] Setting up event listeners');
-          
-          player.on('play', () => {
-            console.log('[Viewer] Local play event triggered');
-          });
-          
-          player.on('pause', () => {
-            console.log('[Viewer] Local pause event triggered');
-          });
-          
-          player.on('timeupdate', () => {
-            const position = player.currentTime();
-            updatePosition(position);
-          });
-        } else {
-          // Solo mode: just update local position
-          console.log('[Solo] Setting up timeupdate listener');
-          player.on('timeupdate', () => {
-            const position = player.currentTime();
-            updatePosition(position);
-          });
-        }
+        // Store player ref for later use
+        setPlayerRef(player);
+        setIsReady(true);
       } catch (error) {
         console.error('Error initializing video player:', error);
       }
     }
+  }, [posterImage]); // Only re-initialize if poster changes
 
-    return () => {
-      // Clear sync interval
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-      }
-    };
-  }, [posterImage, isHost, roomId]); // Removed currentVideo to prevent re-initialization loop
+  // Separate useEffect for event listeners - runs when isHost or roomId changes
+  useEffect(() => {
+    const player = playerRef.current;
+    
+    if (!player || !isReady) {
+      return;
+    }
+
+    console.log('🎯 Setting up event listeners - isHost:', isHost, 'roomId:', roomId);
+
+    // Host event listeners - send WebSocket events
+    if (isHost && roomId) {
+      const handlePlay = () => {
+        if (!ignoreEventsRef.current) {
+          const position = player.currentTime();
+          console.log('[Host] Broadcasting PLAY at position:', position);
+          sendPlay(roomId, position);
+        }
+      };
+
+      const handlePause = () => {
+        if (!ignoreEventsRef.current) {
+          const position = player.currentTime();
+          console.log('[Host] Broadcasting PAUSE at position:', position);
+          sendPause(roomId, position);
+        }
+      };
+
+      const handleSeeked = () => {
+        if (!ignoreEventsRef.current) {
+          const position = player.currentTime();
+          console.log('[Host] Broadcasting SEEK to position:', position);
+          sendSeek(roomId, position);
+          updatePosition(position);
+        }
+      };
+
+      const handleTimeUpdate = () => {
+        const position = player.currentTime();
+        updatePosition(position);
+      };
+
+      const handleKeyDown = (event) => {
+        // Arrow Left: Skip backward 5 seconds
+        if (event.which === 37) {
+          event.preventDefault();
+          const currentTime = player.currentTime();
+          const newTime = Math.max(0, currentTime - 5);
+          player.currentTime(newTime);
+          sendSeek(roomId, newTime);
+        }
+        // Arrow Right: Skip forward 5 seconds
+        if (event.which === 39) {
+          event.preventDefault();
+          const currentTime = player.currentTime();
+          const duration = player.duration();
+          const newTime = Math.min(duration || currentTime + 5, currentTime + 5);
+          player.currentTime(newTime);
+          sendSeek(roomId, newTime);
+        }
+      };
+
+      player.on('play', handlePlay);
+      player.on('pause', handlePause);
+      player.on('seeked', handleSeeked);
+      player.on('timeupdate', handleTimeUpdate);
+      player.on('keydown', handleKeyDown);
+
+      // Start periodic sync (every 30 seconds)
+      syncIntervalRef.current = setInterval(() => {
+        const position = player.currentTime();
+        console.log('[Host] Broadcasting SYNC at position:', position);
+        sendSync(roomId, position);
+      }, 30000);
+
+      console.log('✅ Host event listeners registered');
+
+      // Cleanup function for this useEffect
+      return () => {
+        player.off('play', handlePlay);
+        player.off('pause', handlePause);
+        player.off('seeked', handleSeeked);
+        player.off('timeupdate', handleTimeUpdate);
+        player.off('keydown', handleKeyDown);
+        
+        if (syncIntervalRef.current) {
+          clearInterval(syncIntervalRef.current);
+        }
+        
+        console.log('🧹 Host event listeners removed');
+      };
+    } else if (roomId) {
+      // Viewers in room: listen to video events for debugging
+      console.log('[Viewer] Setting up event listeners');
+      
+      const handlePlay = () => {
+        console.log('[Viewer] Local play event triggered');
+      };
+      
+      const handlePause = () => {
+        console.log('[Viewer] Local pause event triggered');
+      };
+      
+      const handleTimeUpdate = () => {
+        const position = player.currentTime();
+        updatePosition(position);
+      };
+
+      player.on('play', handlePlay);
+      player.on('pause', handlePause);
+      player.on('timeupdate', handleTimeUpdate);
+
+      console.log('✅ Viewer event listeners registered');
+
+      return () => {
+        player.off('play', handlePlay);
+        player.off('pause', handlePause);
+        player.off('timeupdate', handleTimeUpdate);
+        console.log('🧹 Viewer event listeners removed');
+      };
+    } else {
+      // Solo mode: just update local position
+      console.log('[Solo] Setting up timeupdate listener');
+      
+      const handleTimeUpdate = () => {
+        const position = player.currentTime();
+        updatePosition(position);
+      };
+
+      player.on('timeupdate', handleTimeUpdate);
+
+      return () => {
+        player.off('timeupdate', handleTimeUpdate);
+      };
+    }
+  }, [isHost, roomId, isReady]); // Re-run when role or room changes
 
   // Update video source when video changes
   useEffect(() => {

@@ -152,7 +152,7 @@ const RoomInterior = ({ roomId, onLeave }) => {
       const userIdToCheck = currentUserId || userId;
       
       // Determine user role
-      const currentUserMember = members.find(m => {
+      const  currentUserMember = await members.find(m => {
         console.log('Checking member:', m.user?.id, 'against userId:', userIdToCheck);
         return m.user?.id === userIdToCheck;
       });
@@ -160,6 +160,7 @@ const RoomInterior = ({ roomId, onLeave }) => {
       if (currentUserMember) {
         console.log('Setting user role to:', currentUserMember.role);
         setUserRole(currentUserMember.role);
+        // Note: userRole state won't update until next render (state setters are async)
       } else {
         console.warn('User not found in members list. userId:', userIdToCheck, 'members:', members);
       }
