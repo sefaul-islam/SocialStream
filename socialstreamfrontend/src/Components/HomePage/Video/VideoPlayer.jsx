@@ -5,6 +5,8 @@ import './VideoPlayer.css';
 import { useVideoStore, useRoomStore } from '../../../stores/useRoomStore';
 import { motion, AnimatePresence } from 'framer-motion';
 
+//need to whole refactor this videoplayer.jsx file, it's not pretty enough
+
 const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
   const videoRef = useRef(null);
   const playerRef = useRef(null);
