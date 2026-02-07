@@ -265,6 +265,12 @@ const RoomInterior = ({ roomId, onLeave }) => {
 
   const handlePlayVideo = (video) => {
     console.log('Playing video:', video);
+    console.log('Video thumbnail URLs:', {
+      thumbnailUrl: video?.thumbnailUrl,
+      thumbnailurl: video?.thumbnailurl,
+      thumbnail: video?.thumbnail,
+      posterUrl: video?.posterUrl
+    });
     setCurrentVideo(video);
     sendChangeVideo(roomId, video.id);
   };
