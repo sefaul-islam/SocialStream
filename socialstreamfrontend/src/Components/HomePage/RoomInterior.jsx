@@ -12,7 +12,40 @@ const RoomInterior = ({ roomId, onLeave }) => {
   const [searching, setSearching] = useState(false);
   const [userRole, setUserRole] = useState('MEMBER');
   const [userId, setUserId] = useState(null);
-  
+
+  // Chat state
+  const [messages, setMessages] = useState([
+    {
+      id: 'msg-1',
+      userId: 1,
+      username: 'Alice',
+      role: 'HOST',
+      text: 'Welcome to the room! 🎬',
+      timestamp: new Date(Date.now() - 300000), // 5 min ago
+      avatar: null
+    },
+    {
+      id: 'msg-2',
+      userId: 2,
+      username: 'Bob',
+      role: 'MEMBER',
+      text: 'Thanks for hosting!',
+      timestamp: new Date(Date.now() - 180000), // 3 min ago
+      avatar: null
+    },
+    {
+      id: 'msg-3',
+      userId: 3,
+      username: 'Charlie',
+      role: 'MEMBER',
+      text: 'Great movie choice!',
+      timestamp: new Date(Date.now() - 60000), // 1 min ago
+      avatar: null
+    },
+  ]);
+  const [newMessage, setNewMessage] = useState('');
+  const messagesEndRef = useRef(null);
+
   // Zustand stores
   const {
     currentRoom,
@@ -194,6 +227,11 @@ const RoomInterior = ({ roomId, onLeave }) => {
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
+  // Auto-scroll chat messages to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   const handleAddToQueue = async (videoId) => {
     try {
       await roomService.addToQueue(roomId, videoId);
@@ -231,10 +269,46 @@ const RoomInterior = ({ roomId, onLeave }) => {
     sendChangeVideo(roomId, video.id);
   };
 
+  // Helper functions for chat
+  const formatTimestamp = (timestamp) => {
+    const now = new Date();
+    const diff = now - new Date(timestamp);
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
+  };
+
+  const handleSendMessage = () => {
+    if (!newMessage.trim()) return;
+
+    const message = {
+      id: `msg-${Date.now()}`,
+      userId: userId,
+      username: currentRoom?.members?.find(m => m.userId === userId)?.username || 'You',
+      role: userRole,
+      text: newMessage,
+      timestamp: new Date(),
+      avatar: null
+    };
+
+    setMessages(prev => [...prev, message]);
+    setNewMessage('');
+
+    // Auto-scroll to bottom
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
   const isHost = userRole === 'HOST' || userRole === 'ADMIN';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-black text-white">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white">
       {/* Header */}
       <div className="bg-black/40 backdrop-blur-md border-b border-purple-500/30 p-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
@@ -259,11 +333,61 @@ const RoomInterior = ({ roomId, onLeave }) => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="max-w-full mx-auto px-3 py-6 grid grid-cols-1 lg:grid-cols-4 gap-3">
         {/* Video Player Section - Left Side */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-3 space-y-3 relative z-10">
+          {/* Movie Search - Above Video Player */}
+          <div className="relative z-50 bg-black/40 backdrop-blur-md rounded-lg border border-purple-500/30 p-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search for movies..."
+              className="w-full px-3 py-1.5 bg-gray-800 border border-purple-500/30 rounded-md focus:outline-none focus:border-green-500 text-sm"
+            />
+            {searching && (
+              <p className="text-xs text-gray-400 mt-1">Searching...</p>
+            )}
+
+            {/* Search Results as Dropdown Overlay */}
+            {searchResults.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute z-[9999] left-0 right-0 top-full mt-2 max-h-96 overflow-y-auto bg-gray-900 border border-purple-500/30 rounded-xl shadow-2xl"
+              >
+                <div className="p-2 space-y-2">
+                  {searchResults.map((video) => (
+                    <div
+                      key={video.id}
+                      className="p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition flex items-center justify-between"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-white truncate">{video.title}</p>
+                        <p className="text-sm text-gray-400">
+                          {video.year} · {video.director}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          handleAddToQueue(video.id);
+                          setSearchQuery('');
+                          setSearchResults([]);
+                        }}
+                        className="ml-3 px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </div>
+
           {/* Video Player */}
-          <div className="bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-6">
+          <div className="relative z-0 bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-6 min-h-[calc(100vh-30rem)]">
             {currentVideo ? (
               <VideoPlayer
                 video={currentVideo}
@@ -273,65 +397,23 @@ const RoomInterior = ({ roomId, onLeave }) => {
                 thumbnail={currentVideo?.thumbnailUrl || currentVideo?.thumbnailurl || currentVideo?.thumbnail}
               />
             ) : (
-              <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
+              <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center min-h-[calc(100vh-32rem)]">
                 <p className="text-gray-400">No video selected. Choose from queue or search for movies.</p>
-              </div>
-            )}
-          </div>
-
-          {/* Movie Search */}
-          <div className="bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-6">
-            <h2 className="text-xl font-bold mb-4">🔍 Search Movies</h2>
-            <div className="mb-4">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search for movies... (starts searching automatically)"
-                className="w-full px-4 py-2 bg-gray-800 border border-purple-500/30 rounded-lg focus:outline-none focus:border-purple-500"
-              />
-              {searching && (
-                <p className="text-sm text-gray-400 mt-2">Searching...</p>
-              )}
-            </div>
-
-            {/* Search Results */}
-            {searchResults.length > 0 && (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {searchResults.map((video) => (
-                  <div
-                    key={video.id}
-                    className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg hover:bg-gray-700/50 transition"
-                  >
-                    <div className="flex-1">
-                      <h3 className="font-semibold">{video.title}</h3>
-                      <p className="text-sm text-gray-400">
-                        {video.year} | {video.director}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleAddToQueue(video.id)}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition text-sm"
-                    >
-                      + Add to Queue
-                    </button>
-                  </div>
-                ))}
               </div>
             )}
           </div>
         </div>
 
-        {/* Queue & Members Section - Right Side */}
-        <div className="space-y-6">
+        {/* Queue & Chat Section - Right Side */}
+        <div className="space-y-4">
           {/* Queue */}
-          <div className="bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-6">
+          <div className="bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-4">
             <h2 className="text-xl font-bold mb-4">📋 Queue</h2>
-            
+
             {queue.length === 0 ? (
               <p className="text-gray-400 text-center py-8">Queue is empty. Add movies to get started!</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-[30vh] overflow-y-auto">
                 {queue.map((item, index) => (
                   <motion.div
                     key={item.id}
@@ -379,34 +461,95 @@ const RoomInterior = ({ roomId, onLeave }) => {
             )}
           </div>
 
-          {/* Members */}
-          <div className="bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-6">
-            <h2 className="text-xl font-bold mb-4">👥 Members</h2>
-            {roomMembers.length === 0 ? (
-              <p className="text-gray-400 text-center py-4">Loading members...</p>
-            ) : (
-              <div className="space-y-2">
-                {roomMembers.map((member) => {
-                  const isOnline = onlineMembers.includes(member.user?.id);
-                  return (
-                    <div
-                      key={member.id}
-                      className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${
-                          isOnline ? 'bg-green-400 animate-pulse' : 'bg-gray-600'
-                        }`}></span>
-                        <span>{member.user?.username}</span>
-                      </div>
-                      <span className="text-xs px-2 py-1 bg-purple-600/30 rounded">
-                        {member.role}
+          {/* Live Chat Section */}
+          <div className="bg-black/40 backdrop-blur-md border border-purple-500/30 rounded-xl overflow-hidden flex flex-col h-[calc(100vh-28rem)]">
+            {/* Header */}
+            <div className="p-4 border-b border-purple-500/30">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-green-400">💬 Live Chat</h2>
+                <span className="text-sm text-gray-400">
+                  {roomMembers?.length || 0} members
+                </span>
+              </div>
+            </div>
+
+            {/* Messages Container */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.map((message, index) => (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="flex items-start gap-3"
+                >
+                  {/* Avatar */}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0
+                                  ${message.role === 'HOST' ? 'bg-gradient-to-br from-green-400 to-emerald-500' :
+                                    'bg-gradient-to-br from-purple-400 to-pink-500'}`}>
+                    {message.username.charAt(0).toUpperCase()}
+                  </div>
+
+                  {/* Message Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`font-semibold text-sm ${message.role === 'HOST' ? 'text-green-400' : 'text-white'}`}>
+                        {message.username}
+                      </span>
+
+                      {/* Role Badge */}
+                      {message.role === 'HOST' && (
+                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-semibold rounded">
+                          HOST
+                        </span>
+                      )}
+
+                      {/* Timestamp */}
+                      <span className="text-xs text-gray-500">
+                        {formatTimestamp(message.timestamp)}
                       </span>
                     </div>
-                  );
-                })}
+
+                    {/* Message Text */}
+                    <p className="text-sm text-gray-300 break-words">{message.text}</p>
+                  </div>
+                </motion.div>
+              ))}
+
+              {/* Auto-scroll anchor */}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Message Input */}
+            <div className="p-4 border-t border-purple-500/30">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder="Send a message..."
+                  className="flex-1 px-4 py-2 bg-gray-800 border border-purple-500/30 rounded-lg
+                             focus:outline-none focus:border-green-500 text-white placeholder-gray-400"
+                />
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!newMessage.trim()}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700
+                             disabled:cursor-not-allowed rounded-lg transition"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>

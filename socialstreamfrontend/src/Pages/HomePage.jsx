@@ -13,6 +13,7 @@ import JamBuddyReq from '../Components/HomePage/JamBuddyReq';
 import GlobalSearch from '../Components/HomePage/GlobalSearch';
 import Room from '../Components/HomePage/Room';
 import Notification from '../Components/HomePage/Notification';
+import Messaging from '../Components/HomePage/Messaging';
 import authService from '../services/authService';
 import assets from '../assets/assets';
 
@@ -66,6 +67,18 @@ const HomePage = () => {
       name: 'Jam Buddy',
       icon: <img src={assets.frndreq} alt="Jam Buddy" className="w-6 h-6" />,
       title: 'Jam Buddy Requests'
+    },
+    {
+      id: 'messaging',
+      name: 'Messages',
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+      ),
+      title: 'Messaging',
+      badge: '3'
     },
     {
       id: 'notifications',
@@ -132,7 +145,10 @@ const HomePage = () => {
       
       case 'jambuddy':
         return <JamBuddyReq />;
-      
+
+      case 'messaging':
+        return <Messaging />;
+
       case 'notifications':
         return <Notification />;
       
