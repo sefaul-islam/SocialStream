@@ -77,9 +77,35 @@ const useRoomStore = create((set, get) => ({
           destination: `/app/room/${roomId}/join`,
           body: JSON.stringify({ userId: currentUserId }),
         });
+        playPing();
         console.log('📢 Broadcasted join event for userId:', currentUserId);
       }
 
+      function playPing(){
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if(!AudioContext) return;
+        const ctx = new AudioContext();
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+
+        // 1. Set the sound type
+        oscillator.type = "sine"; // "sine" is smooth, "square" is 8-bit, "triangle" is sharp
+        oscillator.frequency.setValueAtTime(800, ctx.currentTime); // Start at 800Hz (High pitch)
+        oscillator.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.1); // Drop to 300Hz quickly
+
+        // 2. Set the volume (envelope) to fade out
+        gainNode.gain.setValueAtTime(0.1, ctx.currentTime); 
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+        // 3. Connect nodes
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        // 4. Play and Stop
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.5);
+        console.log("Pinged");
+      }
       // Subscribe to room topic
       client.subscribe(`/topic/room/${roomId}`, (message) => {
         const data = JSON.parse(message.body);
