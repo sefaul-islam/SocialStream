@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../Components/shared/Sidebar';
 import SearchBar from "../Components/shared/SearchBar";
@@ -15,6 +15,7 @@ import Room from '../Components/HomePage/Room';
 import Notification from '../Components/HomePage/Notification';
 import Messaging from '../Components/HomePage/Messaging';
 import authService from '../services/authService';
+import useMessageStore from '../stores/useMessageStore';
 import assets from '../assets/assets';
 
 
@@ -24,6 +25,10 @@ const HomePage = () => {
   const [pillTab, setPillTab] = useState('forYou');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+
+  // Get messaging store actions
+  const { connectWebSocket, disconnectWebSocket, getTotalUnreadCount, unreadConversations } = useMessageStore();
 
   // Get user info from auth service using useMemo
   const currentUser = useMemo(() => {
@@ -33,10 +38,35 @@ const HomePage = () => {
         name: userInfo.sub?.split('@')[0] || 'User',
         email: userInfo.sub || 'user@socialstream.com',
         online: true,
+        avatar: userInfo.profilePictureUrl || null,
       };
     }
-    return { name: 'User', email: 'user@socialstream.com', online: true };
+    return { name: 'User', email: 'user@socialstream.com', online: true, avatar: null };
   }, []);
+
+  // Initialize messaging WebSocket connection on mount
+  useEffect(() => {
+    const userInfo = authService.getUserInfo();
+    if (userInfo?.userId) {
+      console.log('🔌 Connecting messaging WebSocket for user:', userInfo.userId);
+      connectWebSocket(userInfo.userId);
+      
+      // Request notification permission
+      useMessageStore.getState().requestNotificationPermission();
+    }
+
+    // Disconnect on unmount or logout
+    return () => {
+      console.log('🔌 Disconnecting messaging WebSocket');
+      disconnectWebSocket();
+    };
+  }, [connectWebSocket, disconnectWebSocket]);
+
+  // Update unread message count
+  useEffect(() => {
+    const count = getTotalUnreadCount();
+    setUnreadMessageCount(count);
+  }, [unreadConversations, getTotalUnreadCount]);
 
   // Menu items with icons from assets
   const menuItems = [
@@ -78,7 +108,7 @@ const HomePage = () => {
         </svg>
       ),
       title: 'Messaging',
-      badge: '3'
+      badge: unreadMessageCount > 0 ? String(unreadMessageCount) : undefined
     },
     {
       id: 'notifications',

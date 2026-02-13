@@ -1,264 +1,421 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import messagingService from '../../services/messagingService';
+import socialService from '../../services/socialService';
+import authService from '../../services/authService';
+import useMessageStore from '../../stores/useMessageStore';
 
-// Mock data
-const mockUsers = [
-  { id: 1, name: 'Alice Morgan', username: 'alice', avatar: null, online: true },
-  { id: 2, name: 'Bob Chen', username: 'bob', avatar: null, online: false },
-  { id: 3, name: 'Charlie Davis', username: 'charlie', avatar: null, online: true },
-  { id: 4, name: 'Diana Prince', username: 'diana', avatar: null, online: true },
-  { id: 6, name: 'Frank Miller', username: 'frank', avatar: null, online: false },
+const REACTION_EMOJIS = [
+  { type: 'LIKE', display: '👍' },
+  { type: 'LOVE', display: '❤️' },
+  { type: 'HAHA', display: '😂' },
+  { type: 'WOW', display: '😮' },
+  { type: 'SAD', display: '😢' }
 ];
-
-const mockConversations = [
-  {
-    id: 'conv-1',
-    type: 'direct',
-    participant: { id: 1, name: 'Alice Morgan', username: 'alice', online: true },
-    lastMessage: { text: 'Hey! Are you watching that new movie?', timestamp: '2m ago', senderId: 1 },
-    unreadCount: 2,
-    messages: [
-      {
-        id: 'msg-1',
-        senderId: 1,
-        senderName: 'Alice Morgan',
-        text: 'Hey! Are you watching that new movie?',
-        timestamp: '10:30 AM',
-        reactions: [{ emoji: '👍', count: 2, userReacted: false }],
-      },
-      {
-        id: 'msg-2',
-        senderId: 'me',
-        senderName: 'You',
-        text: 'Not yet! Is it good?',
-        timestamp: '10:32 AM',
-        reactions: [],
-      },
-      {
-        id: 'msg-3',
-        senderId: 1,
-        senderName: 'Alice Morgan',
-        text: 'It\'s amazing! You should definitely check it out. The cinematography is stunning 🎬',
-        timestamp: '10:33 AM',
-        reactions: [{ emoji: '❤️', count: 1, userReacted: true }],
-      },
-    ]
-  },
-  {
-    id: 'conv-2',
-    type: 'direct',
-    participant: { id: 3, name: 'Charlie Davis', username: 'charlie', online: true },
-    lastMessage: { text: 'Thanks for the recommendation!', timestamp: '1h ago', senderId: 3 },
-    unreadCount: 0,
-    messages: [
-      {
-        id: 'msg-4',
-        senderId: 'me',
-        senderName: 'You',
-        text: 'You should watch Inception, it\'s a masterpiece',
-        timestamp: '9:15 AM',
-        reactions: [],
-      },
-      {
-        id: 'msg-5',
-        senderId: 3,
-        senderName: 'Charlie Davis',
-        text: 'Thanks for the recommendation!',
-        timestamp: '9:20 AM',
-        reactions: [{ emoji: '🙏', count: 1, userReacted: false }],
-      },
-    ]
-  },
-  {
-    id: 'conv-4',
-    type: 'direct',
-    participant: { id: 4, name: 'Diana Prince', username: 'diana', online: true },
-    lastMessage: { text: 'See you there!', timestamp: 'Yesterday', senderId: 4 },
-    unreadCount: 0,
-    messages: [
-      {
-        id: 'msg-8',
-        senderId: 'me',
-        senderName: 'You',
-        text: 'Want to join the movie room tonight?',
-        timestamp: 'Yesterday',
-        reactions: [],
-      },
-      {
-        id: 'msg-9',
-        senderId: 4,
-        senderName: 'Diana Prince',
-        text: 'See you there!',
-        timestamp: 'Yesterday',
-        reactions: [{ emoji: '😂', count: 1, userReacted: false }],
-      },
-    ]
-  },
-  {
-    id: 'conv-5',
-    type: 'direct',
-    participant: { id: 6, name: 'Frank Miller', username: 'frank', online: false },
-    lastMessage: { text: 'Catch you later!', timestamp: '2 days ago', senderId: 6 },
-    unreadCount: 0,
-    messages: [
-      {
-        id: 'msg-10',
-        senderId: 6,
-        senderName: 'Frank Miller',
-        text: 'Hey, want to watch something tonight?',
-        timestamp: '2 days ago',
-        reactions: [],
-      },
-      {
-        id: 'msg-11',
-        senderId: 'me',
-        senderName: 'You',
-        text: 'I\'m busy tonight, maybe tomorrow?',
-        timestamp: '2 days ago',
-        reactions: [],
-      },
-      {
-        id: 'msg-12',
-        senderId: 6,
-        senderName: 'Frank Miller',
-        text: 'Catch you later!',
-        timestamp: '2 days ago',
-        reactions: [],
-      },
-    ]
-  },
-];
-
-const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
 const Messaging = () => {
+  // State
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [selectedFriend, setSelectedFriend] = useState(null);
   const [messageInput, setMessageInput] = useState('');
-  const [conversations, setConversations] = useState(mockConversations);
-  const [isTyping, setIsTyping] = useState(false);
+  const [conversationSummaries, setConversationSummaries] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [error, setError] = useState(null);
   const [showReactionPicker, setShowReactionPicker] = useState(null);
   const [isMobileView, setIsMobileView] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [typingTimer, setTypingTimer] = useState(null);
+  const [isUserTyping, setIsUserTyping] = useState(false);
+  
   const messagesEndRef = useRef(null);
-  const typingTimeoutRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const reactionPickerRef = useRef(null);
+  const currentUser = authService.getUserInfo();
 
-  // Filter conversations based on search
-  const filteredConversations = conversations.filter(conv => {
-    const searchLower = searchQuery.toLowerCase();
-    const matchesSearch = searchQuery === '' ||
-      (conv.participant?.name?.toLowerCase().includes(searchLower)) ||
-      (conv.lastMessage?.text?.toLowerCase().includes(searchLower));
+  // Helper to get friend ID from conversation or friend object
+  const getFriendId = (item) => {
+    return item.friendId || item.id || item.participant?.id;
+  };
 
-    return matchesSearch;
-  });
+  // Message store
+  const {
+    conversations: messageConversations,
+    isConnected,
+    typingIndicators,
+    unreadConversations,
+    sendMessage: sendWebSocketMessage,
+    sendTypingIndicator,
+    sendReaction,
+    updateMessage,
+    playReactionSound,
+    setConversationMessages,
+    prependMessages,
+    markConversationAsRead,
+  } = useMessageStore();
 
-  // Auto-scroll to bottom of messages
+  // Load conversations and friends on mount
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [selectedConversation?.messages]);
+    loadConversations();
+    loadFriends();
+  }, []);
 
-  // Simulate typing indicator
+  // Listen for new messages and update conversation list
   useEffect(() => {
-    if (messageInput.length > 0 && selectedConversation) {
-      setIsTyping(true);
+    const updatedSummaries = [...conversationSummaries];
+    let hasChanges = false;
 
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
+    messageConversations.forEach((messages, friendId) => {
+      if (!messages || messages.length === 0) return;
+
+      const lastMessage = messages[messages.length - 1];
+      const existingIndex = updatedSummaries.findIndex(conv => conv.friendId === friendId);
+      const unreadCount = unreadConversations.get(friendId) || 0;
+
+      if (existingIndex !== -1) {
+        // Update existing conversation
+        const existing = updatedSummaries[existingIndex];
+        if (existing.lastMessageTime !== lastMessage.timestamp || 
+            existing.lastMessage !== lastMessage.message ||
+            existing.unreadCount !== unreadCount) {
+          
+          updatedSummaries[existingIndex] = {
+            ...existing,
+            lastMessage: lastMessage.message,
+            lastMessageTime: lastMessage.timestamp,
+            unreadCount: unreadCount
+          };
+          hasChanges = true;
+        }
+      } else {
+        // New conversation - fetch friend details
+        const friend = friends.find(f => f.id === friendId);
+        if (friend) {
+          updatedSummaries.unshift({
+            friendId: friendId,
+            friendName: friend.username,
+            friendProfilePicture: friend.profilePictureUrl || null,
+            lastMessage: lastMessage.message,
+            lastMessageTime: lastMessage.timestamp,
+            unreadCount: unreadCount,
+            type: 'conversation',
+            participant: {
+              id: friendId,
+              name: friend.username,
+              avatar: friend.profilePictureUrl || null,
+              online: false
+            }
+          });
+          hasChanges = true;
+        }
       }
+    });
 
-      typingTimeoutRef.current = setTimeout(() => {
-        setIsTyping(false);
-      }, 3000);
-    } else {
-      setIsTyping(false);
+    if (hasChanges) {
+      // Sort by last message time
+      updatedSummaries.sort((a, b) => {
+        const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+        const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+        return timeB - timeA;
+      });
+      setConversationSummaries(updatedSummaries);
+    }
+  }, [messageConversations, friends, unreadConversations]);
+
+  // Close reaction picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (reactionPickerRef.current && !reactionPickerRef.current.contains(event.target)) {
+        // Check if click is not on the reaction button itself
+        const isReactionButton = event.target.closest('button')?.textContent?.includes('🙂');
+        if (!isReactionButton) {
+          setShowReactionPicker(null);
+        }
+      }
+    };
+
+    if (showReactionPicker !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
+      document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [messageInput, selectedConversation]);
+  }, [showReactionPicker]);
 
-  const handleSendMessage = () => {
-    if (!messageInput.trim() || !selectedConversation) return;
-
-    const newMessage = {
-      id: `msg-${Date.now()}`,
-      senderId: 'me',
-      senderName: 'You',
-      text: messageInput,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      reactions: [],
-    };
-
-    setConversations(prevConversations =>
-      prevConversations.map(conv =>
-        conv.id === selectedConversation.id
-          ? {
-              ...conv,
-              messages: [...conv.messages, newMessage],
-              lastMessage: { text: messageInput, timestamp: 'Just now', senderId: 'me' }
-            }
-          : conv
-      )
-    );
-
-    setSelectedConversation(prev => ({
-      ...prev,
-      messages: [...prev.messages, newMessage]
-    }));
-
-    setMessageInput('');
-    setIsTyping(false);
+  // Load conversation summaries
+  const loadConversations = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const summaries = await messagingService.getConversations();
+      setConversationSummaries(summaries);
+    } catch (err) {
+      console.error('Error loading conversations:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleToggleReaction = (messageId, emoji) => {
-    if (!selectedConversation) return;
+  // Load friends list
+  const loadFriends = async () => {
+    try {
+      const friendsList = await socialService.getMyFriends();
+      setFriends(friendsList);
+    } catch (err) {
+      console.error('Error loading friends:', err);
+    }
+  };
 
-    setConversations(prevConversations =>
-      prevConversations.map(conv =>
-        conv.id === selectedConversation.id
-          ? {
-              ...conv,
-              messages: conv.messages.map(msg =>
-                msg.id === messageId
-                  ? {
-                      ...msg,
-                      reactions: msg.reactions.find(r => r.emoji === emoji)
-                        ? msg.reactions.map(r =>
-                            r.emoji === emoji
-                              ? { ...r, count: r.userReacted ? r.count - 1 : r.count + 1, userReacted: !r.userReacted }
-                              : r
-                          ).filter(r => r.count > 0)
-                        : [...msg.reactions, { emoji, count: 1, userReacted: true }]
-                    }
-                  : msg
-              )
-            }
-          : conv
-      )
-    );
+  // Load messages for selected friend
+  const loadMessages = async (friendId, page = 0) => {
+    try {
+      setLoadingMessages(true);
+      const response = await messagingService.getConversation(friendId, page, 20);
+      
+      if (page === 0) {
+        // First load - set messages
+        setConversationMessages(friendId, response.content);
+      } else {
+        // Pagination - prepend older messages
+        prependMessages(friendId, response.content);
+      }
+      
+      setHasMoreMessages(!response.last);
+      setCurrentPage(page);
+    } catch (err) {
+      console.error('Error loading messages:', err);
+      setError(err.message);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
 
-    setSelectedConversation(prev => ({
-      ...prev,
-      messages: prev.messages.map(msg =>
-        msg.id === messageId
-          ? {
-              ...msg,
-              reactions: msg.reactions.find(r => r.emoji === emoji)
-                ? msg.reactions.map(r =>
-                    r.emoji === emoji
-                      ? { ...r, count: r.userReacted ? r.count - 1 : r.count + 1, userReacted: !r.userReacted }
-                      : r
-                  ).filter(r => r.count > 0)
-                : [...msg.reactions, { emoji, count: 1, userReacted: true }]
-            }
-          : msg
-      )
-    }));
+  // Handle friend selection
+  const handleSelectFriend = (friend) => {
+    const friendId = getFriendId(friend);
+    if (!friendId) {
+      console.error('Invalid friend object - missing ID:', friend);
+      setError('Unable to load conversation');
+      return;
+    }
+    setSelectedFriend(friend);
+    setCurrentPage(0);
+    setHasMoreMessages(true);
+    setIsMobileView(true);
+    loadMessages(friendId, 0);
+    
+    // Mark conversation as read
+    markConversationAsRead(friendId);
+  };
 
-    setShowReactionPicker(null);
+  // Handle send message
+  const handleSendMessage = async () => {
+    if (!messageInput.trim() || !selectedFriend || sendingMessage) return;
+
+    const recipientId = getFriendId(selectedFriend);
+    if (!recipientId) {
+      setError('Invalid recipient');
+      return;
+    }
+    const content = messageInput.trim();
+
+    try {
+      setSendingMessage(true);
+      setError(null);
+
+      // Try WebSocket first
+      const sent = sendWebSocketMessage(recipientId, content);
+      
+      if (!sent) {
+        // Fallback to REST API
+        await messagingService.sendMessage(recipientId, content);
+        // Reload messages to include the new one
+        await loadMessages(recipientId, 0);
+      }
+
+      setMessageInput('');
+      setIsUserTyping(false);
+      
+      // Update conversation list
+      await loadConversations();
+    } catch (err) {
+      console.error('Error sending message:', err);
+      setError(err.message);
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  // Handle typing indicator
+  useEffect(() => {
+    if (!selectedFriend) return;
+
+    const friendId = getFriendId(selectedFriend);
+    if (!friendId) return;
+
+    if (messageInput.length > 0) {
+      setIsUserTyping(true);
+      
+      // Send typing indicator
+      sendTypingIndicator(friendId, true);
+
+      // Clear previous timer
+      if (typingTimer) {
+        clearTimeout(typingTimer);
+      }
+
+      // Stop typing after 3 seconds
+      const timer = setTimeout(() => {
+        setIsUserTyping(false);
+        sendTypingIndicator(friendId, false);
+      }, 3000);
+
+      setTypingTimer(timer);
+    } else {
+      setIsUserTyping(false);
+      sendTypingIndicator(friendId, false);
+    }
+
+    return () => {
+      if (typingTimer) {
+        clearTimeout(typingTimer);
+      }
+    };
+  }, [messageInput, selectedFriend]);
+
+  // Handle reaction
+  const handleToggleReaction = async (messageId, reactionType) => {
+    try {
+      // Find the message to determine recipient
+      const message = currentMessages.find(m => m.id === messageId);
+      if (!message) return;
+
+      const recipientId = message.senderId === currentUser?.userId
+        ? message.recipientId
+        : message.senderId;
+
+      // WebSocket first
+      const sent = sendReaction(recipientId, messageId, reactionType);
+
+      if (sent) {
+        // Optimistic update
+        updateMessage(messageId, { reaction: reactionType });
+        playReactionSound();
+      } else {
+        // Fallback to REST
+        await messagingService.addReaction(messageId, reactionType);
+        if (selectedFriend) {
+          const friendId = getFriendId(selectedFriend);
+          if (friendId) {
+            await loadMessages(friendId, currentPage);
+          }
+        }
+      }
+
+      setShowReactionPicker(null);
+    } catch (err) {
+      console.error('Error adding reaction:', err);
+      setError(err.message);
+    }
+  };
+
+  // Load more messages (pagination)
+  const handleLoadMore = () => {
+    if (selectedFriend && hasMoreMessages && !loadingMessages) {
+      const friendId = getFriendId(selectedFriend);
+      if (friendId) {
+        loadMessages(friendId, currentPage + 1);
+      }
+    }
+  };
+
+  // Auto-scroll to bottom of messages
+  useEffect(() => {
+    if (selectedFriend && currentPage === 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messageConversations, selectedFriend, typingIndicators]);
+
+  // Get messages for selected friend
+  const selectedFriendId = selectedFriend ? getFriendId(selectedFriend) : null;
+  const currentMessages = selectedFriendId 
+    ? messageConversations.get(selectedFriendId) || []
+    : [];
+
+  // Check if friend is typing
+  const friendTypingIndicator = selectedFriendId 
+    ? typingIndicators.get(selectedFriendId)
+    : null;
+
+  // Combine conversations and friends for display
+  const allConversations = [
+    ...conversationSummaries.map(conv => ({
+      ...conv,
+      type: 'conversation',
+      participant: {
+        id: conv.friendId,
+        name: conv.friendName,
+        avatar: conv.friendProfilePicture,
+        online: false // We don't have online status yet
+      }
+    })),
+    // Add friends who haven't been messaged yet
+    ...friends
+      .filter(friend => friend && friend.id && !conversationSummaries.some(conv => conv.friendId === friend.id))
+      .map(friend => ({
+        friendId: friend.id,
+        friendName: friend.username,
+        friendProfilePicture: friend.profilePictureUrl || null,
+        lastMessage: null,
+        lastMessageTime: null,
+        type: 'friend',
+        participant: {
+          id: friend.id,
+          name: friend.username,
+          avatar: friend.profilePictureUrl || null,
+          online: false
+        }
+      }))
+  ];
+
+  // Filter conversations based on search
+  const filteredConversations = allConversations.filter(conv => {
+    const searchLower = searchQuery.toLowerCase();
+    return searchQuery === '' ||
+      conv.friendName?.toLowerCase().includes(searchLower) ||
+      conv.lastMessage?.toLowerCase().includes(searchLower);
+  });
+
+  // Format timestamp
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days}d ago`;
+    
+    return date.toLocaleDateString();
+  };
+
+  // Format message timestamp
+  const formatMessageTime = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const renderAvatar = (participant, size = 'w-10 h-10') => {
@@ -288,12 +445,30 @@ const Messaging = () => {
     <div className="h-screen bg-black text-white flex flex-col">
       {/* Header */}
       <div className="bg-black/40 backdrop-blur-md border-b border-purple-500/30 p-4">
-        <h1 className="text-xl font-bold text-center text-green-400">Direct Messages</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold text-center text-green-400 flex-1">Direct Messages</h1>
+          <div className="flex items-center gap-2">
+            {isConnected ? (
+              <span className="text-xs text-green-400 flex items-center gap-1">
+                <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                Connected
+              </span>
+            ) : (
+              <span className="text-xs text-red-400">Disconnected</span>
+            )}
+          </div>
+        </div>
       </div>
+
+      {error && (
+        <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 m-4 rounded-lg">
+          {error}
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Conversation List */}
-        <div className={`w-full lg:w-1/3 border-r border-purple-500/30 flex flex-col ${selectedConversation && isMobileView ? 'hidden lg:flex' : 'flex'}`}>
+        <div className={`w-full lg:w-1/3 border-r border-purple-500/30 flex flex-col ${selectedFriend && isMobileView ? 'hidden lg:flex' : 'flex'}`}>
           {/* Search Bar */}
           <div className="p-4 border-b border-purple-500/30">
             <div className="relative">
@@ -312,27 +487,30 @@ const Messaging = () => {
 
           {/* Conversation List */}
           <div className="flex-1 overflow-y-auto">
-            {filteredConversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-400"></div>
+              </div>
+            ) : filteredConversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400 p-4">
                 <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
-                <p>No conversations found</p>
+                <p className="text-center">No conversations yet. Start chatting with your friends!</p>
               </div>
             ) : (
               <div className="space-y-1 p-2">
-                {filteredConversations.map((conv, index) => (
+                {filteredConversations.map((conv, index) => {
+                  const convId = getFriendId(conv);
+                  return (
                   <motion.div
-                    key={conv.id}
+                    key={convId || `conv-${index}`}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    onClick={() => {
-                      setSelectedConversation(conv);
-                      setIsMobileView(true);
-                    }}
+                    onClick={() => handleSelectFriend(conv)}
                     className={`p-4 rounded-lg cursor-pointer transition-all ${
-                      selectedConversation?.id === conv.id
+                      selectedFriendId === convId
                         ? 'bg-green-500/20 border-l-4 border-green-400'
                         : 'bg-gray-800/30 hover:bg-gray-800/50'
                     }`}
@@ -343,13 +521,17 @@ const Messaging = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
                           <h3 className="font-semibold text-white truncate">
-                            {conv.participant?.name}
+                            {conv.friendName}
                           </h3>
-                          <span className="text-xs text-gray-400 ml-2">{conv.lastMessage?.timestamp}</span>
+                          {conv.lastMessageTime && (
+                            <span className="text-xs text-gray-400 ml-2">
+                              {formatTimestamp(conv.lastMessageTime)}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center justify-between">
                           <p className="text-sm text-gray-400 truncate">
-                            {conv.lastMessage?.text}
+                            {conv.lastMessage || 'Start a conversation'}
                           </p>
                           {conv.unreadCount > 0 && (
                             <span className="ml-2 px-2 py-0.5 bg-green-500 text-white text-xs font-semibold rounded-full">
@@ -360,15 +542,16 @@ const Messaging = () => {
                       </div>
                     </div>
                   </motion.div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
 
         {/* Right Panel - Chat View */}
-        <div className={`flex-1 flex flex-col ${!selectedConversation || !isMobileView ? 'hidden lg:flex' : 'flex'}`}>
-          {selectedConversation ? (
+        <div className={`flex-1 flex flex-col ${!selectedFriend || !isMobileView ? 'hidden lg:flex' : 'flex'}`}>
+          {selectedFriend ? (
             <>
               {/* Chat Header */}
               <div className="bg-black/40 backdrop-blur-md border-b border-purple-500/30 p-4">
@@ -382,120 +565,223 @@ const Messaging = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
                       </svg>
                     </button>
-                    {renderAvatar(selectedConversation.participant)}
+                    {renderAvatar(selectedFriend.participant || { 
+                      name: selectedFriend.friendName,
+                      avatar: selectedFriend.friendProfilePicture 
+                    })}
                     <div>
-                      <h2 className="font-bold">{selectedConversation.participant?.name}</h2>
-                      <p className="text-xs text-gray-400">
-                        {selectedConversation.participant?.online ? 'Online' : 'Offline'}
-                      </p>
+                      <h2 className="font-bold">{selectedFriend.friendName}</h2>
+                      {friendTypingIndicator?.isTyping && (
+                        <p className="text-xs text-green-400">typing...</p>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button className="p-2 hover:bg-gray-800 rounded-lg transition">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => {
+                      const friendId = getFriendId(selectedFriend);
+                      if (friendId) loadMessages(friendId, 0);
+                    }}
+                    className="p-2 hover:bg-gray-800 rounded-lg transition"
+                    title="Refresh messages"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
                 </div>
               </div>
 
               {/* Messages Container */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {selectedConversation.messages.map((message) => (
-                  <motion.div
-                    key={message.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`flex ${message.senderId === 'me' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div className={`flex gap-2 max-w-[70%] ${message.senderId === 'me' ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <div className="flex flex-col">
-                        <div className="relative group">
-                          <div
-                            className={`px-4 py-2 rounded-lg ${
-                              message.senderId === 'me'
-                                ? 'bg-green-600/30 text-white'
-                                : 'bg-gray-800 text-white'
-                            }`}
-                          >
-                            <p>{message.text}</p>
-                          </div>
-
-                          {/* React Button */}
-                          <button
-                            onClick={() => setShowReactionPicker(showReactionPicker === message.id ? null : message.id)}
-                            className="absolute -bottom-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-700 hover:bg-gray-600 rounded-full p-1"
-                          >
-                            <span className="text-xs">+</span>
-                          </button>
-
-                          {/* Reaction Picker */}
-                          <AnimatePresence>
-                            {showReactionPicker === message.id && (
-                              <motion.div
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.8 }}
-                                className="absolute top-full mt-2 bg-gray-800 border border-purple-500/30 rounded-lg p-2 flex gap-1 z-10 shadow-xl"
-                              >
-                                {REACTION_EMOJIS.map(emoji => (
-                                  <button
-                                    key={emoji}
-                                    onClick={() => handleToggleReaction(message.id, emoji)}
-                                    className="hover:bg-gray-700 rounded p-1 text-lg transition"
-                                  >
-                                    {emoji}
-                                  </button>
-                                ))}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-
-                        {/* Reactions */}
-                        {message.reactions.length > 0 && (
-                          <div className="flex gap-1 mt-1 px-1">
-                            {message.reactions.map((reaction, idx) => (
-                              <motion.button
-                                key={idx}
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                onClick={() => handleToggleReaction(message.id, reaction.emoji)}
-                                className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 transition ${
-                                  reaction.userReacted
-                                    ? 'bg-green-500/30 border border-green-500/50'
-                                    : 'bg-gray-700/50 hover:bg-gray-700'
-                                }`}
-                              >
-                                <span>{reaction.emoji}</span>
-                                <span>{reaction.count}</span>
-                              </motion.button>
-                            ))}
-                          </div>
-                        )}
-
-                        <span className={`text-xs text-gray-500 mt-1 px-1 ${message.senderId === 'me' ? 'text-right' : 'text-left'}`}>
-                          {message.timestamp}
-                        </span>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-
-                {/* Typing Indicator */}
-                {isTyping && (
-                  <div className="flex justify-start">
-                    <div className="text-sm text-gray-400 italic flex items-center gap-2">
-                      <span>{selectedConversation.participant?.name?.split(' ')[0]} is typing</span>
-                      <div className="flex gap-1">
-                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                      </div>
-                    </div>
+              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+                {/* Load More Button */}
+                {hasMoreMessages && currentMessages.length > 0 && (
+                  <div className="text-center">
+                    <button
+                      onClick={handleLoadMore}
+                      disabled={loadingMessages}
+                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm disabled:opacity-50"
+                    >
+                      {loadingMessages ? 'Loading...' : 'Load older messages'}
+                    </button>
                   </div>
                 )}
+
+                {loadingMessages && currentMessages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-400"></div>
+                  </div>
+                ) : currentMessages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    <p>No messages yet. Start the conversation!</p>
+                  </div>
+                ) : (
+                  currentMessages.map((message) => {
+                    const isOwnMessage = message.senderId === currentUser?.userId;
+                    const reactionDisplay = message.reaction 
+                      ? REACTION_EMOJIS.find(r => r.type === message.reaction)?.display 
+                      : null;
+
+                    return (
+                      <motion.div
+                        key={message.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div className={`flex gap-2 max-w-[70%] ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
+                          <div className="flex flex-col">
+                            <div className="relative group">
+                              <div
+                                className={`px-4 py-2 rounded-lg ${
+                                  isOwnMessage
+                                    ? 'bg-green-600/30 text-white'
+                                    : 'bg-gray-800 text-white'
+                                }`}
+                              >
+                                <p className="whitespace-pre-wrap break-words">{message.message}</p>
+                              </div>
+
+                              {/* React Button */}
+                              <motion.button
+                                onClick={() => setShowReactionPicker(showReactionPicker === message.id ? null : message.id)}
+                                className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800/80 hover:bg-gray-700 rounded-full p-2 shadow-lg ${
+                                  isOwnMessage 
+                                    ? 'left-0 -translate-x-1/2' 
+                                    : 'right-0 translate-x-1/2'
+                                }`}
+                                whileHover={{ y: -5, scale: 1.1 }}
+                                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                              >
+                                <span className="text-xl">🙂</span>
+                              </motion.button>
+
+                              {/* Reaction Picker */}
+                              <AnimatePresence>
+                                {showReactionPicker === message.id && (
+                                  <motion.div
+                                    ref={reactionPickerRef}
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.8 }}
+                                    className={`absolute top-full mt-2 bg-gray-800 border border-purple-500/30 rounded-lg p-2 flex gap-1 z-10 shadow-xl ${
+                                      isOwnMessage ? 'right-0' : 'left-0'
+                                    }`}
+                                  >
+                                    {REACTION_EMOJIS.map(reaction => (
+                                      <motion.button
+                                        key={reaction.type}
+                                        onClick={() => handleToggleReaction(message.id, reaction.type)}
+                                        className="hover:bg-gray-700 rounded p-1 text-lg transition"
+                                        whileHover={{ y: -8, scale: 1.2 }}
+                                        transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                                      >
+                                        {reaction.display}
+                                      </motion.button>
+                                    ))}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+
+                            {/* Reaction Display */}
+                            {reactionDisplay && (
+                              <div className="flex gap-1 mt-1 px-1">
+                                <div className="px-2 py-0.5 rounded-full text-xs flex items-center gap-1 bg-gray-700/50">
+                                  <span>{reactionDisplay}</span>
+                                </div>
+                              </div>
+                            )}
+
+                            <span className={`text-xs text-gray-500 mt-1 px-1 ${isOwnMessage ? 'text-right' : 'text-left'}`}>
+                              {formatMessageTime(message.timestamp)}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })
+                )}
+
+                {/* Typing Indicator */}
+                <AnimatePresence>
+                  {friendTypingIndicator?.isTyping && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.8 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.8 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex justify-start"
+                    >
+                      <div className="flex gap-2 items-end">
+                        {/* Avatar */}
+                        {selectedFriend?.participant && (
+                          <div className="flex-shrink-0">
+                            {selectedFriend.participant.avatar ? (
+                              <img
+                                src={selectedFriend.participant.avatar}
+                                alt={selectedFriend.participant.name}
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center text-white text-sm font-bold">
+                                {selectedFriend.participant.name?.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Typing Bubble */}
+                        <div className="bg-gray-800 rounded-lg px-4 py-3 flex items-center gap-1">
+                          <motion.div
+                            className="flex gap-1"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                          >
+                            <motion.span
+                              className="w-2 h-2 bg-gray-400 rounded-full"
+                              animate={{
+                                y: [0, -6, 0],
+                                backgroundColor: ['#9CA3AF', '#6EE7B7', '#9CA3AF']
+                              }}
+                              transition={{
+                                duration: 0.6,
+                                repeat: Infinity,
+                                ease: "easeInOut",
+                                delay: 0
+                              }}
+                            />
+                            <motion.span
+                              className="w-2 h-2 bg-gray-400 rounded-full"
+                              animate={{
+                                y: [0, -6, 0],
+                                backgroundColor: ['#9CA3AF', '#6EE7B7', '#9CA3AF']
+                              }}
+                              transition={{
+                                duration: 0.6,
+                                repeat: Infinity,
+                                ease: "easeInOut",
+                                delay: 0.1
+                              }}
+                            />
+                            <motion.span
+                              className="w-2 h-2 bg-gray-400 rounded-full"
+                              animate={{
+                                y: [0, -6, 0],
+                                backgroundColor: ['#9CA3AF', '#6EE7B7', '#9CA3AF']
+                              }}
+                              transition={{
+                                duration: 0.6,
+                                repeat: Infinity,
+                                ease: "easeInOut",
+                                delay: 0.2
+                              }}
+                            />
+                          </motion.div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <div ref={messagesEndRef} />
               </div>
@@ -516,16 +802,21 @@ const Messaging = () => {
                       placeholder="Type a message..."
                       rows="1"
                       className="w-full bg-transparent outline-none text-white placeholder-gray-400 resize-none max-h-24"
+                      disabled={sendingMessage}
                     />
                   </div>
                   <button
                     onClick={handleSendMessage}
-                    disabled={!messageInput.trim()}
-                    className="p-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition"
+                    disabled={!messageInput.trim() || sendingMessage}
+                    className="p-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg transition flex items-center justify-center"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
+                    {sendingMessage ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                    )}
                   </button>
                 </div>
               </div>

@@ -17,7 +17,6 @@ const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
-    'ngrok-skip-browser-warning': 'true',
   },
 });
 
@@ -80,7 +79,8 @@ class AuthService {
         ...decoded,
         roles: decoded.roles || [],
         email: decoded.sub,
-        userId: decoded.id
+        userId: decoded.id,
+        profilePictureUrl: decoded.profilepicurl || null
       };
       this.setUserInfo(userInfo);
 

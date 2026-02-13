@@ -12,3 +12,4 @@ export { default as videoService } from './videoService';
 export { default as userService } from './userService';
 export { default as searchService } from './searchService';
 export { default as socialService } from './socialService';
+export { default as messagingService } from './messagingService';

@@ -14,7 +14,6 @@ const roomAxios = axios.create({
   baseURL: `${API_BASE_URL}/api/rooms`,
   headers: {
     'Content-Type': 'application/json',
-    'ngrok-skip-browser-warning': 'true',
   },
 });
 

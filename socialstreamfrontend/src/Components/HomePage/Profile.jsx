@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import userService from '../../services/userService';
 import authService from '../../services/authService';
+import cloudinaryService from '../../services/cloudinaryService';
+import SuccessNotification from '../shared/SuccessNotification';
 
 const Profile = ({ user, onClose }) => {
   const navigate = useNavigate();
@@ -10,13 +12,65 @@ const Profile = ({ user, onClose }) => {
   const [userPosts, setUserPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [currentAvatar, setCurrentAvatar] = useState(user?.avatar || null);
+  const fileInputRef = useRef(null);
 
   const sections = [
     { id: 'overview', label: 'Overview' },
-    { id: 'activity', label: 'Activity' },
-    { id: 'settings', label: 'Settings' },
-    { id: 'privacy', label: 'Privacy' },
   ];
+  // Initialize avatar from user prop or auth service
+  useEffect(() => {
+    const userInfo = authService.getUserInfo();
+    const avatarUrl = user?.avatar || userInfo?.profilePictureUrl || null;
+    setCurrentAvatar(avatarUrl);
+  }, [user]);
+  // Handle profile picture upload
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+      setUploadError(null);
+
+      // Upload to Cloudinary
+      const cloudinaryResult = await cloudinaryService.uploadImage(file, 'profile_pictures');
+      
+      // Update backend with new profile picture URL
+      const updatedUser = await userService.uploadProfilePicture(cloudinaryResult.url);
+      
+      // Update local state immediately
+      setCurrentAvatar(cloudinaryResult.url);
+      
+      // Update user info in auth service to persist the avatar across the app
+      const currentUserInfo = authService.getUserInfo();
+      if (currentUserInfo) {
+        currentUserInfo.profilePictureUrl = cloudinaryResult.url;
+        authService.setUserInfo(currentUserInfo);
+      }
+      
+      // Show success notification
+      setUploadSuccess(true);
+      
+      console.log('Profile picture updated successfully:', updatedUser);
+    } catch (err) {
+      console.error('Failed to upload profile picture:', err);
+      setUploadError(err.message || 'Failed to upload profile picture');
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleEditProfileClick = () => {
+    fileInputRef.current?.click();
+  };
 
   // Fetch user's posts from backend
   useEffect(() => {
@@ -282,103 +336,6 @@ const Profile = ({ user, onClose }) => {
           </div>
         );
       
-      case 'activity':
-        return (
-          <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10">
-            <h3 className="text-2xl font-bold mb-6">Your Activity</h3>
-            <div className="space-y-6">
-              {/* Watch History */}
-              <div>
-                <h4 className="text-lg font-semibold mb-3 text-white">Watch History</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="relative group cursor-pointer">
-                      <img
-                        src={`https://picsum.photos/300/400?random=${i + 20}`}
-                        alt={`Movie ${i}`}
-                        className="w-full aspect-[2/3] object-cover rounded-lg"
-                      />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                        <button className="bg-white/15 hover:bg-white/20 border border-white/20 text-white px-4 py-2 rounded-lg font-medium">
-                          Watch Again
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      
-      case 'settings':
-        return (
-          <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10">
-            <h3 className="text-2xl font-bold mb-6">Account Settings</h3>
-            <div className="space-y-4">
-              {[
-                { icon: '👤', title: 'Personal Information', desc: 'Update your name and bio' },
-                { icon: '✉️', title: 'Email Settings', desc: 'Manage email preferences' },
-                { icon: '🔔', title: 'Notifications', desc: 'Configure notifications' },
-                { icon: '🎨', title: 'Appearance', desc: 'Customize theme' },
-              ].map((setting, i) => (
-                <button key={i} className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-white/5 border border-white/10 hover:border-white/20 transition text-left">
-                  <div className="flex items-center gap-4">
-                    <span className="text-3xl">{setting.icon}</span>
-                    <div>
-                      <h4 className="font-semibold text-white">{setting.title}</h4>
-                      <p className="text-sm text-gray-400">{setting.desc}</p>
-                    </div>
-                  </div>
-                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      
-      case 'privacy':
-        return (
-          <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10">
-            <h3 className="text-2xl font-bold mb-6">Privacy & Security</h3>
-            <div className="space-y-6">
-              <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
-                <div>
-                  <h4 className="font-semibold text-white mb-1">Profile Visibility</h4>
-                  <p className="text-sm text-gray-500">Control who can see your profile</p>
-                </div>
-                <select className="bg-black/40 border border-white/20 text-white px-4 py-2 rounded-lg focus:outline-none focus:border-white/40">
-                  <option>Public</option>
-                  <option>Friends Only</option>
-                  <option>Private</option>
-                </select>
-              </div>
-              
-              <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
-                <div>
-                  <h4 className="font-semibold text-white mb-1">Activity Status</h4>
-                  <p className="text-sm text-gray-500">Show when you're online</p>
-                </div>
-                <button className="bg-white/20 w-14 h-8 rounded-full relative">
-                  <div className="absolute right-1 top-1 w-6 h-6 bg-white rounded-full"></div>
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
-                <div>
-                  <h4 className="font-semibold text-white mb-1">Two-Factor Authentication</h4>
-                  <p className="text-sm text-gray-500">Add an extra layer of security</p>
-                </div>
-                <button className="px-4 py-2 bg-white/15 hover:bg-white/20 border border-white/10 text-white rounded-lg font-medium transition">
-                  Enable
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      
       default:
         return null;
     }
@@ -386,14 +343,60 @@ const Profile = ({ user, onClose }) => {
 
   return (
     <div className="p-8 bg-black min-h-screen">
+      {/* Success Notification */}
+      <SuccessNotification
+        message="Profile picture updated successfully!"
+        isVisible={uploadSuccess}
+        onClose={() => setUploadSuccess(false)}
+        duration={3000}
+      />
+
+      {/* Error Notification */}
+      {uploadError && (
+        <div className="fixed top-6 right-6 z-50 max-w-md">
+          <div className="bg-gradient-to-r from-red-500/90 to-rose-500/90 backdrop-blur-lg border border-red-400/30 rounded-xl shadow-2xl overflow-hidden">
+            <div className="p-4 flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <div className="bg-white/20 rounded-full p-2">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex-1 pt-0.5">
+                <h4 className="text-white font-semibold text-lg mb-1">Upload Failed</h4>
+                <p className="text-white/90 text-sm">{uploadError}</p>
+              </div>
+              <button
+                onClick={() => setUploadError(null)}
+                className="flex-shrink-0 text-white/80 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
       {/* Profile Header */}
       <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-8 border border-white/10 mb-6">
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-6">
             <div className="relative">
-              {user?.avatar ? (
+              {currentAvatar || user?.avatar ? (
                 <img
-                  src={user.avatar}
+                  src={currentAvatar || user.avatar}
                   alt={user.name}
                   className="w-24 h-24 rounded-full object-cover border-4 border-white/20"
                 />
@@ -402,18 +405,37 @@ const Profile = ({ user, onClose }) => {
                   {user?.name?.charAt(0).toUpperCase()}
                 </div>
               )}
-              <button className="absolute bottom-0 right-0 bg-white/15 hover:bg-white/20 border border-white/20 p-2 rounded-full transition">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
+              <button
+                onClick={handleEditProfileClick}
+                disabled={uploading}
+                className="absolute bottom-0 right-0 bg-white/15 hover:bg-white/20 border border-white/20 p-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                )}
               </button>
             </div>
             <div>
               <h1 className="text-3xl font-bold mb-1">{user?.name || 'User'}</h1>
               <p className="text-gray-400 mb-3">{user?.email}</p>
               <div className="flex gap-3">
-                <button className="px-6 py-2 bg-white/15 hover:bg-white/20 border border-white/10 rounded-lg font-medium transition-all">
-                  Edit Profile
+                <button
+                  onClick={handleEditProfileClick}
+                  disabled={uploading}
+                  className="px-6 py-2 bg-white/15 hover:bg-white/20 border border-white/10 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {uploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Uploading...</span>
+                    </>
+                  ) : (
+                    'Edit Profile'
+                  )}
                 </button>
                 <button className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg font-medium transition-all">
                   Share

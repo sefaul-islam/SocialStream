@@ -18,6 +18,9 @@ const useMessageStore = create((set, get) => ({
   // Typing indicators - Map<userId, {isTyping: boolean, senderName: string}>
   typingIndicators: new Map(),
 
+  // Unread messages - Map<conversationId, number>
+  unreadConversations: new Map(),
+
   // Message queue for offline messages
   pendingMessages: [],
 
@@ -27,6 +30,7 @@ const useMessageStore = create((set, get) => ({
   // Add message to conversation
   addMessage: (message) => set((state) => {
     const conversations = new Map(state.conversations);
+    const unreadConversations = new Map(state.unreadConversations);
     const senderId = message.senderId;
     const recipientId = message.recipientId;
     const currentUserId = state.currentUserId;
@@ -46,9 +50,15 @@ const useMessageStore = create((set, get) => ({
         new Date(a.timestamp) - new Date(b.timestamp)
       );
       conversations.set(conversationId, conversationMessages);
+      
+      // Increment unread count if message is from another user
+      if (senderId !== currentUserId) {
+        const currentUnread = unreadConversations.get(conversationId) || 0;
+        unreadConversations.set(conversationId, currentUnread + 1);
+      }
     }
     
-    return { conversations };
+    return { conversations, unreadConversations };
   }),
 
   // Update message (for reactions)
@@ -118,6 +128,23 @@ const useMessageStore = create((set, get) => ({
     typingIndicators.delete(userId);
     return { typingIndicators };
   }),
+
+  // Mark conversation as read
+  markConversationAsRead: (conversationId) => set((state) => {
+    const unreadConversations = new Map(state.unreadConversations);
+    unreadConversations.delete(conversationId);
+    return { unreadConversations };
+  }),
+
+  // Get total unread count
+  getTotalUnreadCount: () => {
+    const { unreadConversations } = get();
+    let total = 0;
+    for (const count of unreadConversations.values()) {
+      total += count;
+    }
+    return total;
+  },
 
   // Connect to WebSocket
   connectWebSocket: (userId, token = null) => {
@@ -205,6 +232,18 @@ const useMessageStore = create((set, get) => ({
           
         } catch (error) {
           console.error('Error processing typing indicator:', error);
+        }
+      });
+
+      // Subscribe to reaction updates
+      client.subscribe(`/queue/${userId}/reaction`, (message) => {
+        try {
+          const messageData = JSON.parse(message.body);
+          console.log('\u2764\uFE0F Reaction update received:', messageData);
+          get().updateMessage(messageData.id, messageData);
+          get().playReactionSound();
+        } catch (error) {
+          console.error('Error processing reaction update:', error);
         }
       });
 
@@ -307,22 +346,62 @@ const useMessageStore = create((set, get) => ({
       console.error('Error sending typing indicator:', error);
     }
   },
-  sendReaction :(messageId,reactionType)=>{
-      const {client,isConnected}=get();
-      if(!client || !client.connected || !isConnected){
-        return;
+  sendReaction: (recipientId, messageId, reactionType) => {
+      const { client, isConnected } = get();
+      if (!client || !client.connected || !isConnected) {
+        return false;
       }
-      try{
+      try {
         client.publish({
-          destination:'/app/dm/reaction',
-          body:JSON.stringify({
+          destination: '/app/dm/reaction',
+          body: JSON.stringify({
+            recipientId,
             messageId,
-            reactionType
+            reaction: reactionType
           })
-        })
-      }catch(error){
-        console.error('Error sendin reaction:', error)
+        });
+        return true;
+      } catch (error) {
+        console.error('Error sending reaction:', error);
+        return false;
       }
+  },
+
+  // Play pop sound for reactions
+  playReactionSound: () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+
+      const ctx = new AudioContext();
+      const t = ctx.currentTime;
+
+      // Short click — tiny noise burst
+      const bufferSize = Math.floor(ctx.sampleRate * 0.015);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2));
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.value = 2000;
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.3, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.015);
+
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      source.start(t);
+      source.stop(t + 0.015);
+    } catch (error) {
+      console.error('Error playing reaction sound:', error);
+    }
   },
 
   // Play notification sound
@@ -357,8 +436,9 @@ const useMessageStore = create((set, get) => ({
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
         new Notification(`New message from ${message.senderName}`, {
-          body: message.message.substring(0, 100),
-          icon: '/logo.png', // Replace with your app icon
+          body: message.message?.substring(0, 100) || 'New message',
+          icon: '/logo.png',
+          badge: '/logo.png',
           tag: `message-${message.id}`,
         });
       } catch (error) {
@@ -386,6 +466,7 @@ const useMessageStore = create((set, get) => ({
   clearAllData: () => set({
     conversations: new Map(),
     typingIndicators: new Map(),
+    unreadConversations: new Map(),
     pendingMessages: [],
     currentUserId: null,
   }),

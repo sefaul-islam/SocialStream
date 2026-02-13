@@ -101,11 +101,15 @@ const Sidebar = ({
                     }`}
                   >
                     {item.icon && (
-                      <span className={`${isActive ? 'scale-110' : ''} transition-transform block`}>
+                      <span className={`${isActive ? 'scale-110' : ''} transition-transform block relative`}>
                         {typeof item.icon === 'string' ? (
                           <img src={item.icon} alt="" className="w-6 h-6" />
                         ) : (
                           item.icon
+                        )}
+                        {/* Notification dot */}
+                        {item.badge && (
+                          <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 border-2 border-current rounded-full animate-pulse"></span>
                         )}
                       </span>
                     )}

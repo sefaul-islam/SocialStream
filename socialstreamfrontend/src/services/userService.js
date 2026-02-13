@@ -18,7 +18,6 @@ const createAuthAxios = () => {
     baseURL: API_BASE_URL,
     headers: {
       'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
       ...(token && { 'Authorization': `Bearer ${token}` })
     },
   });
@@ -109,7 +108,7 @@ class UserService {
       }
 
       const axiosInstance = createAuthAxios();
-      const response = await axiosInstance.post('/api/users/profile-picture', {
+      const response = await axiosInstance.patch('/api/users/profile-picture', {
         profilePictureUrl: imageUrl
       });
 
