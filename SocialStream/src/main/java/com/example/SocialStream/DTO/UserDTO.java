@@ -15,6 +15,7 @@ public class UserDTO {
     private Set<Role> roles;
     private User.UserStatus status;
     private LocalDateTime userRegistrationDate;
+    private String profilePictureUrl;
 
     public UserDTO(User user){
         this.Id = user.getId();
@@ -23,5 +24,6 @@ public class UserDTO {
         this.roles = user.getRoles();
         this.status = user.getStatus();
         this.userRegistrationDate = user.getUserRegistrationDate();
+        this.profilePictureUrl = user.getProfilePictureUrl();
     }
 }

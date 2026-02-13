@@ -31,6 +31,7 @@ public class JwtUtil {
                         .map(GrantedAuthority::getAuthority)
                         .collect(Collectors.toList()))
                 .claim("id", user.getUserId())
+                .claim("profilepicurl",user.getProfilePicUrl())
                 .signWith(getSignInKey())
                 .compact();
     }

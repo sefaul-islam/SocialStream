@@ -38,4 +38,5 @@ public class CustomUserDetails implements UserDetails {
     public long getUserId(){
         return users.getId();
     }
+    public String getProfilePicUrl(){return users.getProfilePictureUrl();}
 }

@@ -53,4 +53,17 @@ public class UserService {
             .map(PostResponseDTO::new)
             .toList();
     }
+
+    public UserDTO updateProfilePicture(Long userId, String profilePictureUrl) {
+        // Find user by ID
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
+
+        // Update profile picture URL
+        user.setProfilePictureUrl(profilePictureUrl);
+
+        // Save and return updated user
+        User updatedUser = userRepository.save(user);
+        return new UserDTO(updatedUser);
+    }
 }
