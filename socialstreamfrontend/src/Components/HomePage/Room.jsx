@@ -34,7 +34,7 @@ const Room = () => {
     try {
       setLoading(true);
       setError(null);
-      const roomsData = await roomService.getRooms({
+      const roomsData = await roomService.getMyFriendRooms({
         pagenumber: currentPage,
         pagesize: pageSize,
         sortBy: 'id',
@@ -470,6 +470,16 @@ const Room = () => {
                     LIVE
                   </div>
                 )}
+                
+                {/* Your Room Badge */}
+                {room.inviteLink && (
+                  <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-blue-500/90 rounded-full text-[10px] font-semibold">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
+                    </svg>
+                    YOUR ROOM
+                  </div>
+                )}
 
                 {/* Thumbnail/Header */}
                 <div className={`h-24 bg-gradient-to-br ${getRandomColor(index)} p-4 flex items-end`}>
@@ -503,6 +513,36 @@ const Room = () => {
                       </div>
                     )}
                   </div>
+
+                  {/* Invite Link (only shown for user's own rooms) */}
+                  {room.inviteLink && (
+                    <div className="mb-2.5 pb-2.5 border-b border-white/5">
+                      <div className="text-[10px] text-gray-500 mb-1">Invite Link</div>
+                      <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1.5 border border-white/10">
+                        <input
+                          type="text"
+                          value={room.inviteLink}
+                          readOnly
+                          className="flex-1 bg-transparent text-[11px] text-gray-300 outline-none px-1 truncate"
+                        />
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => {
+                            navigator.clipboard.writeText(room.inviteLink);
+                            setSuccessMessage('Invite link copied!');
+                            setShowSuccess(true);
+                          }}
+                          className="p-1 bg-white/10 hover:bg-white/20 rounded text-gray-400 hover:text-white transition-colors flex-shrink-0"
+                          title="Copy invite link"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </motion.button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Action Buttons */}
                   <div className="flex gap-2">
