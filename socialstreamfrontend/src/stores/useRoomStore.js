@@ -14,6 +14,8 @@ const useRoomStore = create((set, get) => ({
   isConnected: false,
   onQueueUpdate: null,
   currentUserId: null,
+  onNewMessage: null,
+  onMessageReaction: null,
   
   // WebSocket client
   stompClient: null,
@@ -51,6 +53,12 @@ const useRoomStore = create((set, get) => ({
   
   // Set current user ID
   setCurrentUserId: (userId) => set({ currentUserId: userId }),
+
+  // Set chat message callback
+  setOnNewMessage: (callback) => set({ onNewMessage: callback }),
+
+  // Set reaction callback
+  setOnMessageReaction: (callback) => set({ onMessageReaction: callback }),
 
   // Connect to WebSocket
   connectWebSocket: (roomId, token) => {
@@ -110,6 +118,17 @@ const useRoomStore = create((set, get) => ({
       client.subscribe(`/topic/room/${roomId}`, (message) => {
         const data = JSON.parse(message.body);
         console.log('[WebSocket] Received message:', data);
+        
+        // Check if this is a chat message (has message field) or a control message (has action field)
+        if (data.message && data.senderId) {
+          // This is a chat message
+          console.log('[WebSocket] Received chat message from:', data.senderName);
+          const { onNewMessage } = get();
+          if (onNewMessage) {
+            onNewMessage(data);
+          }
+          return;
+        }
         
         // Ignore messages sent by current user to prevent infinite loops
         const { currentUserId } = get();
@@ -172,6 +191,18 @@ const useRoomStore = create((set, get) => ({
             break;
           default:
             console.warn('Unknown action:', data.action);
+        }
+      });
+
+      // Subscribe to room chat reactions
+      client.subscribe(`/topic/room/${roomId}/reaction`, (message) => {
+        const data = JSON.parse(message.body);
+        console.log('[WebSocket] Received reaction:', data);
+        
+        // Notify reaction callback if set
+        const { onMessageReaction } = get();
+        if (onMessageReaction) {
+          onMessageReaction(data);
         }
       });
     };
@@ -284,6 +315,38 @@ const useRoomStore = create((set, get) => ({
       });
     } else {
       console.error('[sendSync] Cannot send - WebSocket not connected');
+    }
+  },
+
+  // Send chat message
+  sendMessage: (roomId, message) => {
+    const { stompClient, isConnected } = get();
+    console.log('[sendMessage] Called - roomId:', roomId, 'message:', message, 'connected:', isConnected);
+    
+    if (stompClient && stompClient.connected) {
+      console.log('[sendMessage] Publishing to /app/room/' + roomId + '/message');
+      stompClient.publish({
+        destination: `/app/room/${roomId}/message`,
+        body: JSON.stringify({ message }),
+      });
+    } else {
+      console.error('[sendMessage] Cannot send - WebSocket not connected');
+    }
+  },
+
+  // Send reaction to a message
+  sendReaction: (roomId, messageId, reaction) => {
+    const { stompClient, isConnected } = get();
+    console.log('[sendReaction] Called - roomId:', roomId, 'messageId:', messageId, 'reaction:', reaction, 'connected:', isConnected);
+    
+    if (stompClient && stompClient.connected) {
+      console.log('[sendReaction] Publishing to /app/room/' + roomId + '/reaction');
+      stompClient.publish({
+        destination: `/app/room/${roomId}/reaction`,
+        body: JSON.stringify({ messageId, reaction }),
+      });
+    } else {
+      console.error('[sendReaction] Cannot send - WebSocket not connected');
     }
   },
 

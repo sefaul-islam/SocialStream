@@ -35,7 +35,11 @@ public class UserService {
         user.setPassword(bCryptPasswordEncoder.encode(createUserDTO.getPassword()));
         user.setUsername(createUserDTO.getUsername());
         Role userRole = roleRepository.findByRole(UserRole.USER)
-                .orElseThrow(() -> new InvalidOperationException("Default role USER not found"));
+                .orElseGet(()->{
+                    Role role = new Role();
+                    role.setRole(UserRole.USER);
+                    return roleRepository.save(role);
+                });
         user.getRoles().add(userRole);
         user.setUserRegistrationDate(LocalDateTime.now());
         User savedUser = userRepository.save(user);

@@ -107,6 +107,47 @@ class RoomService {
   }
 
   /**
+   * Get rooms created by the user and their friends
+   * User-owned rooms include invite links, friends' rooms don't
+   * @param {Object} options - Query options
+   * @param {number} options.pagenumber - Page number (default: 1)
+   * @param {number} options.pagesize - Number of items per page (default: 5)
+   * @param {string} options.sortBy - Field to sort by (default: 'id')
+   * @param {string} options.sortDir - Sort direction 'ASC' or 'DESC' (default: 'DESC')
+   * @param {string} options.filterBy - Filter criteria (optional)
+   * @returns {Promise<Array>} List of rooms from user and friends
+   */
+  async getMyFriendRooms(options = {}) {
+    try {
+      const {
+        pagenumber = 1,
+        pagesize = 10,
+        sortBy = 'id',
+        sortDir = 'DESC',
+        filterBy
+      } = options;
+
+      const params = {
+        pagenumber,
+        pagesize,
+        sortBy,
+        sortDir,
+      };
+
+      if (filterBy) {
+        params.filterBy = filterBy;
+      }
+
+      const response = await roomAxios.get('/myfeed', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get my friend rooms error:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to fetch rooms';
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
    * Get a specific room by ID
    * @param {number} roomId - Room ID
    * @returns {Promise<Object>} Room data

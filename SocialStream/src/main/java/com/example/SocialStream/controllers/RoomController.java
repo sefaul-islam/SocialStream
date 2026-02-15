@@ -58,6 +58,31 @@ public class RoomController {
         return ResponseEntity.status(HttpStatus.OK).body(roomServices.getRoom(PageRequest.
                 of(pagenumber-1,pagesize,sort), filterBy));
     }
+    
+    @GetMapping("/myfeed")
+    public ResponseEntity<List<RoomDTO>> getMyFriendRooms(
+            @RequestParam(required = false, defaultValue = "1") int pagenumber,
+            @RequestParam(required = false, defaultValue = "5") int pagesize,
+            @RequestParam(required = false, defaultValue = "id") String sortBy,
+            @RequestParam(required = false, defaultValue = "DESC") String sortDir,
+            @RequestParam(required = false) String filterBy,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        
+        Sort sort;
+        if(sortDir.equalsIgnoreCase("ASC")){
+            sort = Sort.by(sortBy).ascending();
+        } else {
+            sort = Sort.by(sortBy).descending();
+        }
+        
+        List<RoomDTO> rooms = roomServices.getRoomsByUserAndFriends(
+            userDetails.getUserId(), 
+            PageRequest.of(pagenumber - 1, pagesize, sort), 
+            filterBy
+        );
+        
+        return ResponseEntity.status(HttpStatus.OK).body(rooms);
+    }
 
     @PostMapping("/joinroom")
     public ResponseEntity<String> joinRoom(@RequestParam Long roomId,@RequestBody JoinRoomDTO joinRoomDTO, @AuthenticationPrincipal CustomUserDetails userDetails){

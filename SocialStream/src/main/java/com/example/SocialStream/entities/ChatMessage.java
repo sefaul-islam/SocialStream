@@ -1,5 +1,6 @@
 package com.example.SocialStream.entities;
 
+import com.example.SocialStream.enums.Reaction;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -13,7 +14,9 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "chat_messages")
+@Table(name = "chat_messages", indexes = {
+        @Index(name = "idx_chat_room_time", columnList = "room_id,sent_at")
+})
 public class ChatMessage {
 
     @Id
@@ -39,5 +42,8 @@ public class ChatMessage {
 
     @Column(name = "sent_at", nullable = false, updatable = false)
     private LocalDateTime sentAt;
+
+    @Enumerated(EnumType.STRING)
+    private Reaction reaction;
 
 }

@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
@@ -84,6 +85,33 @@ public class RoomServices {
                     .getContent();
         }
 
+    }
+    
+    /**
+     * Get rooms created by the user and their friends (ACCEPTED friendships)
+     * Rooms created by the user include invite link, friends' rooms don't
+     * @param userId The ID of the current user
+     * @param pageable Pagination parameters
+     * @param filterBy Optional name filter
+     * @return List of RoomDTOs with conditional invite link exposure
+     */
+    public List<RoomDTO> getRoomsByUserAndFriends(Long userId, Pageable pageable, String filterBy) {
+        Page<Room> roomsPage;
+        
+        if (filterBy == null || filterBy.isEmpty()) {
+            roomsPage = roomRepository.findRoomsByUserAndFriends(userId, pageable);
+        } else {
+            roomsPage = roomRepository.findRoomsByUserAndFriendsAndNameContaining(userId, filterBy, pageable);
+        }
+        
+        // Map to DTO with conditional invite link exposure
+        return roomsPage.getContent().stream()
+                .map(room -> {
+                    // Include invite link only if current user is the host
+                    boolean isHost = room.getHostId().getId().equals(userId);
+                    return new RoomDTO(room, isHost);
+                })
+                .toList();
     }
 
     public void joinRoom(Long roomId, JoinRoomDTO joinRoomDTO, Long userId) {
@@ -183,4 +211,6 @@ public class RoomServices {
         // Optionally delete room from database (or just mark as inactive)
         // roomRepository.delete(room);
     }
+
+    
 }

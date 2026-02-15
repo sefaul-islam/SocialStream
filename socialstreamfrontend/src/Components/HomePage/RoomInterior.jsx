@@ -14,35 +14,7 @@ const RoomInterior = ({ roomId, onLeave }) => {
   const [userId, setUserId] = useState(null);
 
   // Chat state
-  const [messages, setMessages] = useState([
-    {
-      id: 'msg-1',
-      userId: 1,
-      username: 'Alice',
-      role: 'HOST',
-      text: 'Welcome to the room! 🎬',
-      timestamp: new Date(Date.now() - 300000), // 5 min ago
-      avatar: null
-    },
-    {
-      id: 'msg-2',
-      userId: 2,
-      username: 'Bob',
-      role: 'MEMBER',
-      text: 'Thanks for hosting!',
-      timestamp: new Date(Date.now() - 180000), // 3 min ago
-      avatar: null
-    },
-    {
-      id: 'msg-3',
-      userId: 3,
-      username: 'Charlie',
-      role: 'MEMBER',
-      text: 'Great movie choice!',
-      timestamp: new Date(Date.now() - 60000), // 1 min ago
-      avatar: null
-    },
-  ]);
+  const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef(null);
 
@@ -67,6 +39,9 @@ const RoomInterior = ({ roomId, onLeave }) => {
     sendChangeVideo,
     sendSync,
     setOnQueueUpdate,
+    sendMessage,
+    setOnNewMessage,
+    setOnMessageReaction,
   } = useRoomStore();
 
   const {
@@ -83,12 +58,40 @@ const RoomInterior = ({ roomId, onLeave }) => {
     // Register queue update callback
     setOnQueueUpdate(() => fetchQueue);
     
+    // Register chat message callback
+    setOnNewMessage((messageData) => {
+      console.log('Received new chat message:', messageData);
+      const newMsg = {
+        id: messageData.id,
+        userId: messageData.senderId,
+        username: messageData.senderName,
+        role: getRoleForUser(messageData.senderId),
+        text: messageData.message,
+        timestamp: new Date(messageData.sentAt),
+        avatar: messageData.senderAvatar,
+        reaction: messageData.reaction
+      };
+      setMessages(prev => [...prev, newMsg]);
+    });
+
+    // Register reaction callback
+    setOnMessageReaction((reactionData) => {
+      console.log('Received message reaction:', reactionData);
+      setMessages(prev => prev.map(msg => 
+        msg.id === reactionData.id 
+          ? { ...msg, reaction: reactionData.reaction }
+          : msg
+      ));
+    });
+    
     return () => {
       // Cleanup on unmount
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
       }
       setOnQueueUpdate(null);
+      setOnNewMessage(null);
+      setOnMessageReaction(null);
       disconnectWebSocket();
     };
   }, [roomId]);
@@ -292,23 +295,40 @@ const RoomInterior = ({ roomId, onLeave }) => {
   const handleSendMessage = () => {
     if (!newMessage.trim()) return;
 
-    const message = {
-      id: `msg-${Date.now()}`,
-      userId: userId,
-      username: currentRoom?.members?.find(m => m.userId === userId)?.username || 'You',
-      role: userRole,
-      text: newMessage,
-      timestamp: new Date(),
-      avatar: null
-    };
-
-    setMessages(prev => [...prev, message]);
+    // Send message via WebSocket
+    sendMessage(roomId, newMessage.trim());
     setNewMessage('');
 
     // Auto-scroll to bottom
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
+  };
+
+  // Helper function to get role for a user
+  const getRoleForUser = (userId) => {
+    const member = roomMembers.find(m => m.user?.id === userId);
+    return member?.role || 'MEMBER';
+  };
+
+  // Helper function to get reaction emoji
+  const getReactionEmoji = (reaction) => {
+    const reactions = {
+      LIKE: '👍',
+      LOVE: '❤️',
+      HAHA: '😂',
+      WOW: '😮',
+      SAD: '😢'
+    };
+    return reactions[reaction] || '';
+  };
+
+  // Handle adding reaction to a message
+  const handleReaction = (messageId, reaction) => {
+    console.log('Adding reaction:', reaction, 'to message:', messageId);
+    // Import sendReaction from useRoomStore
+    const { sendReaction } = useRoomStore.getState();
+    sendReaction(roomId, messageId, reaction);
   };
 
   const isHost = userRole === 'HOST' || userRole === 'ADMIN';
@@ -339,9 +359,9 @@ const RoomInterior = ({ roomId, onLeave }) => {
         </div>
       </div>
 
-      <div className="max-w-full mx-auto px-3 py-6 grid grid-cols-1 lg:grid-cols-4 gap-3">
+      <div className="max-w-full mx-auto px-3 py-6 grid grid-cols-1 md:grid-cols-1 lg:grid-cols-[70%_30%] xl:grid-cols-[70%_30%] gap-3">
         {/* Video Player Section - Left Side */}
-        <div className="lg:col-span-3 space-y-3 relative z-10">
+        <div className="space-y-3 relative z-10">
           {/* Movie Search - Above Video Player */}
           <div className="relative z-50 bg-black/40 backdrop-blur-md rounded-lg border border-purple-500/30 p-2">
             <input
@@ -393,7 +413,7 @@ const RoomInterior = ({ roomId, onLeave }) => {
           </div>
 
           {/* Video Player */}
-          <div className="relative z-0 bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-6 min-h-[calc(100vh-30rem)]">
+          <div className="relative z-0 bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-6 md:min-h-[400px] lg:min-h-[500px] xl:min-h-[600px]">
             {currentVideo ? (
               <VideoPlayer
                 video={currentVideo}
@@ -403,7 +423,7 @@ const RoomInterior = ({ roomId, onLeave }) => {
                 thumbnail={currentVideo?.thumbnailUrl || currentVideo?.thumbnailurl || currentVideo?.thumbnail}
               />
             ) : (
-              <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center min-h-[calc(100vh-32rem)]">
+              <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center md:min-h-[400px] lg:min-h-[500px]">
                 <p className="text-gray-400">No video selected. Choose from queue or search for movies.</p>
               </div>
             )}
@@ -411,15 +431,15 @@ const RoomInterior = ({ roomId, onLeave }) => {
         </div>
 
         {/* Queue & Chat Section - Right Side */}
-        <div className="space-y-4">
+        <div className="flex flex-col md:space-y-4 lg:h-[calc(100vh-8rem)] lg:space-y-0 lg:gap-3">
           {/* Queue */}
-          <div className="bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-4">
+          <div className="bg-black/40 backdrop-blur-md rounded-xl border border-purple-500/30 p-4 lg:flex-shrink-0 lg:h-[220px] flex flex-col">
             <h2 className="text-xl font-bold mb-4">📋 Queue</h2>
 
             {queue.length === 0 ? (
               <p className="text-gray-400 text-center py-8">Queue is empty. Add movies to get started!</p>
             ) : (
-              <div className="space-y-3 max-h-[30vh] overflow-y-auto">
+              <div className="space-y-3 overflow-y-auto flex-1">
                 {queue.map((item, index) => (
                   <motion.div
                     key={item.id}
@@ -468,7 +488,7 @@ const RoomInterior = ({ roomId, onLeave }) => {
           </div>
 
           {/* Live Chat Section */}
-          <div className="bg-black/40 backdrop-blur-md border border-purple-500/30 rounded-xl overflow-hidden flex flex-col h-[calc(100vh-28rem)]">
+          <div className="bg-black/40 backdrop-blur-md border border-purple-500/30 rounded-xl overflow-hidden flex flex-col md:h-[500px] lg:flex-1 lg:min-h-[400px]">
             {/* Header */}
             <div className="p-4 border-b border-purple-500/30">
               <div className="flex items-center justify-between">
@@ -481,46 +501,79 @@ const RoomInterior = ({ roomId, onLeave }) => {
 
             {/* Messages Container */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {messages.map((message, index) => (
-                <motion.div
-                  key={message.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="flex items-start gap-3"
-                >
-                  {/* Avatar */}
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0
-                                  ${message.role === 'HOST' ? 'bg-gradient-to-br from-green-400 to-emerald-500' :
-                                    'bg-gradient-to-br from-purple-400 to-pink-500'}`}>
-                    {message.username.charAt(0).toUpperCase()}
-                  </div>
-
-                  {/* Message Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`font-semibold text-sm ${message.role === 'HOST' ? 'text-green-400' : 'text-white'}`}>
-                        {message.username}
-                      </span>
-
-                      {/* Role Badge */}
-                      {message.role === 'HOST' && (
-                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-semibold rounded">
-                          HOST
-                        </span>
+              {messages.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  <p>No messages yet. Start the conversation!</p>
+                </div>
+              ) : (
+                messages.map((message, index) => (
+                  <motion.div
+                    key={message.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="flex items-start gap-3 group"
+                  >
+                    {/* Avatar */}
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0
+                                    ${message.role === 'HOST' ? 'bg-gradient-to-br from-green-400 to-emerald-500' :
+                                      'bg-gradient-to-br from-purple-400 to-pink-500'}`}>
+                      {message.avatar ? (
+                        <img src={message.avatar} alt={message.username} className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        message.username.charAt(0).toUpperCase()
                       )}
-
-                      {/* Timestamp */}
-                      <span className="text-xs text-gray-500">
-                        {formatTimestamp(message.timestamp)}
-                      </span>
                     </div>
 
-                    {/* Message Text */}
-                    <p className="text-sm text-gray-300 break-words">{message.text}</p>
-                  </div>
-                </motion.div>
-              ))}
+                    {/* Message Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`font-semibold text-sm ${message.role === 'HOST' ? 'text-green-400' : 'text-white'}`}>
+                          {message.username}
+                        </span>
+
+                        {/* Role Badge */}
+                        {message.role === 'HOST' && (
+                          <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-semibold rounded">
+                            HOST
+                          </span>
+                        )}
+
+                        {/* Timestamp */}
+                        <span className="text-xs text-gray-500">
+                          {formatTimestamp(message.timestamp)}
+                        </span>
+                      </div>
+
+                      {/* Message Text */}
+                      <p className="text-sm text-gray-300 break-words">{message.text}</p>
+
+                      {/* Reaction Display & Buttons */}
+                      <div className="flex items-center gap-2 mt-2">
+                        {message.reaction && (
+                          <span className="text-lg">
+                            {getReactionEmoji(message.reaction)}
+                          </span>
+                        )}
+                        
+                        {/* Reaction Buttons - Show on hover */}
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {['LIKE', 'LOVE', 'HAHA', 'WOW', 'SAD'].map((reaction) => (
+                            <button
+                              key={reaction}
+                              onClick={() => handleReaction(message.id, reaction)}
+                              className="text-sm hover:scale-125 transition-transform"
+                              title={reaction}
+                            >
+                              {getReactionEmoji(reaction)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))
+              )}
 
               {/* Auto-scroll anchor */}
               <div ref={messagesEndRef} />

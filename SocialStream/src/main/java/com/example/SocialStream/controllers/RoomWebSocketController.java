@@ -1,13 +1,16 @@
 package com.example.SocialStream.controllers;
 
-import com.example.SocialStream.entities.RoomState;
+import com.example.SocialStream.DTO.ChatMessageDTO;
+import com.example.SocialStream.DTO.SendRoomMessageDTO;
+import com.example.SocialStream.enums.Reaction;
 import com.example.SocialStream.repositories.UserRepository;
+import com.example.SocialStream.services.ChatMessageService;
 import com.example.SocialStream.services.PlaybackSyncService;
-import com.example.SocialStream.utils.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
@@ -18,8 +21,9 @@ import java.util.Map;
 public class RoomWebSocketController {
 
     private final PlaybackSyncService playbackSyncService;
+    private final ChatMessageService chatMessageService;
     private final UserRepository userRepository;
-    private final JwtUtil jwtUtil;
+    private final SimpMessagingTemplate messagingTemplate;
 
     /**
      * Handle play command from host
@@ -124,6 +128,45 @@ public class RoomWebSocketController {
         playbackSyncService.memberLeft(roomId, userId);
     }
 
+    /**
+     * Handle room messaging
+     */
+    @MessageMapping("/room/{roomId}/message")
+    public void handleMessage(@DestinationVariable Long roomId,
+                              @Payload Map<String, Object> payload,
+                              Principal principal) {
+        Long userId = getUserIdFromPrincipal(principal);
+        String messageContent = (String) payload.get("message");
+
+        // Create DTO and send message
+        SendRoomMessageDTO dto = new SendRoomMessageDTO();
+        dto.setMessage(messageContent);
+
+        // Persist message via service
+        ChatMessageDTO chatMessage = chatMessageService.sendMessage(userId, roomId, dto);
+
+        // Broadcast message to all room members
+        messagingTemplate.convertAndSend("/topic/room/" + roomId, chatMessage);
+    }
+
+    /**
+     * Handle room message reactions
+     */
+    @MessageMapping("/room/{roomId}/reaction")
+    public void handleReaction(@DestinationVariable Long roomId,
+                               @Payload Map<String, Object> payload,
+                               Principal principal) {
+        Long userId = getUserIdFromPrincipal(principal);
+        Long messageId = ((Number) payload.get("messageId")).longValue();
+        String reactionStr = (String) payload.get("reaction");
+        Reaction reaction = Reaction.valueOf(reactionStr);
+
+        // Add reaction via service
+        ChatMessageDTO updatedMessage = chatMessageService.addReaction(messageId, userId, reaction);
+
+        // Broadcast updated message to all room members
+        messagingTemplate.convertAndSend("/topic/room/" + roomId + "/reaction", updatedMessage);
+    }
     /**
      * Extract user ID from JWT principal
      */
