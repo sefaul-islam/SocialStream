@@ -361,6 +361,41 @@ class RoomService {
       throw new Error(error.response?.data?.message || 'Failed to close room');
     }
   }
+
+  /**
+   * Get chat messages for a room with pagination
+   * @param {number} roomId - Room ID
+   * @param {number} page - Page number (default: 0)
+   * @param {number} size - Page size (default: 50)
+   * @returns {Promise<Object>} Paginated chat messages with reactions
+   */
+  async getRoomMessages(roomId, page = 0, size = 50) {
+    try {
+      const response = await roomAxios.get(`/${roomId}/messages`, {
+        params: { page, size }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Get room messages error:', error);
+      throw new Error(error.response?.data?.message || 'Failed to fetch room messages');
+    }
+  }
+
+  /**
+   * Get recent chat messages for a room (last 50 messages)
+   * Optimized for initial chat load
+   * @param {number} roomId - Room ID
+   * @returns {Promise<Array>} List of recent chat messages with reactions
+   */
+  async getRecentRoomMessages(roomId) {
+    try {
+      const response = await roomAxios.get(`/${roomId}/messages/recent`);
+      return response.data;
+    } catch (error) {
+      console.error('Get recent room messages error:', error);
+      throw new Error(error.response?.data?.message || 'Failed to fetch recent messages');
+    }
+  }
 }
 
 // Export singleton instance

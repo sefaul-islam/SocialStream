@@ -115,6 +115,9 @@ const RoomInterior = ({ roomId, onLeave }) => {
       // Fetch members to determine user role
       await fetchMembers(currentUserId);
 
+      // Fetch chat message history
+      await fetchChatMessages();
+
       // Start periodic sync if user is host (every 30 seconds)
       // Check user role after fetching members
     } catch (error) {
@@ -203,6 +206,32 @@ const RoomInterior = ({ roomId, onLeave }) => {
       }
     } catch (error) {
       console.error('Failed to fetch members:', error);
+    }
+  };
+
+  const fetchChatMessages = async () => {
+    try {
+      console.log('Fetching chat message history for room:', roomId);
+      const messageHistory = await roomService.getRecentRoomMessages(roomId);
+      console.log('Fetched message history:', messageHistory);
+      
+      // Transform backend messages to frontend format
+      const formattedMessages = messageHistory.map(msg => ({
+        id: msg.id,
+        userId: msg.senderId,
+        username: msg.senderName,
+        role: getRoleForUser(msg.senderId),
+        text: msg.message,
+        timestamp: new Date(msg.sentAt),
+        avatar: msg.senderAvatar,
+        reaction: msg.reaction
+      })).reverse(); // Reverse to show oldest first
+      
+      setMessages(formattedMessages);
+      console.log('Loaded', formattedMessages.length, 'messages');
+    } catch (error) {
+      console.error('Failed to fetch chat messages:', error);
+      // Don't throw - chat is not critical for room functionality
     }
   };
 

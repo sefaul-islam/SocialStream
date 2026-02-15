@@ -88,7 +88,7 @@ public class ChatMessageService {
         }
 
         Pageable pageable = PageRequest.of(page, size);
-        return chatMessageRepository.findByRoomIdOrderBySentAtDesc(roomId, pageable)
+        return chatMessageRepository.findByRoomIdWithSenderAndRoom(roomId, pageable)
                 .map(ChatMessageDTO::new);
     }
 
@@ -101,7 +101,8 @@ public class ChatMessageService {
             throw new InvalidOperationException("You must be a member of the room to view messages");
         }
 
-        return chatMessageRepository.findTop50ByRoomIdOrderBySentAtDesc(roomId)
+        Pageable limit = PageRequest.of(0, 50);
+        return chatMessageRepository.findTop50ByRoomIdWithSender(roomId, limit)
                 .stream()
                 .map(ChatMessageDTO::new)
                 .collect(Collectors.toList());
