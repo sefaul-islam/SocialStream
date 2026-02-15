@@ -18,8 +18,17 @@ const Profile = ({ user, onClose }) => {
   const [currentAvatar, setCurrentAvatar] = useState(user?.avatar || null);
   const fileInputRef = useRef(null);
 
+  // Password change state
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
   const sections = [
     { id: 'overview', label: 'Overview' },
+    { id: 'settings', label: 'Settings' },
   ];
   // Initialize avatar from user prop or auth service
   useEffect(() => {
@@ -151,6 +160,46 @@ const Profile = ({ user, onClose }) => {
     if (diffHours < 24) return `${diffHours} hours ago`;
     if (diffDays < 30) return `${diffDays} days ago`;
     return date.toLocaleDateString();
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError(null);
+
+    // Validation
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      setPasswordError('All fields are required');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters long');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+
+    try {
+      setPasswordLoading(true);
+      await authService.changePassword(oldPassword, newPassword);
+      
+      // Clear form
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      
+      // Show success notification
+      setPasswordSuccess(true);
+      
+    } catch (err) {
+      console.error('Failed to change password:', err);
+      setPasswordError(err.message || 'Failed to change password');
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   const renderContent = () => {
@@ -336,6 +385,114 @@ const Profile = ({ user, onClose }) => {
           </div>
         );
       
+      case 'settings':
+        return (
+          <div>
+            {/* Change Password Section */}
+            <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10 max-w-2xl">
+              <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Change Password
+              </h3>
+
+              {passwordError && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6">
+                  <div className="flex items-center gap-3">
+                    <svg className="w-5 h-5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-red-400 text-sm font-medium">{passwordError}</p>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleChangePassword} autoComplete="off" className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Current Password
+                  </label>
+                  <input
+                    type="password"
+                    value={oldPassword}
+                    onChange={(e) => {
+                      setOldPassword(e.target.value);
+                      setPasswordError(null);
+                    }}
+                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:border-green-500/50 focus:outline-none transition-colors"
+                    placeholder="Enter your current password"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-form-type="other"
+                    disabled={passwordLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      setPasswordError(null);
+                    }}
+                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:border-green-500/50 focus:outline-none transition-colors"
+                    placeholder="Enter new password (min. 6 characters)"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-form-type="other"
+                    disabled={passwordLoading}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      setPasswordError(null);
+                    }}
+                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:border-green-500/50 focus:outline-none transition-colors"
+                    placeholder="Confirm your new password"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-form-type="other"
+                    disabled={passwordLoading}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={passwordLoading}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {passwordLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      <span>Changing Password...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Change Password</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      
       default:
         return null;
     }
@@ -348,6 +505,14 @@ const Profile = ({ user, onClose }) => {
         message="Profile picture updated successfully!"
         isVisible={uploadSuccess}
         onClose={() => setUploadSuccess(false)}
+        duration={3000}
+      />
+
+      {/* Password Change Success Notification */}
+      <SuccessNotification
+        message="Password changed successfully!"
+        isVisible={passwordSuccess}
+        onClose={() => setPasswordSuccess(false)}
         duration={3000}
       />
 

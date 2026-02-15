@@ -7,7 +7,6 @@ import PillNavbar from '../Components/HomePage/PillNavbar';
 import ForYou from '../Components/HomePage/ForYou';
 import NewsFeed from '../Components/HomePage/NewsFeed';
 import Trending from '../Components/HomePage/Trending';
-import Discover from '../Components/HomePage/Discover';
 import Profile from '../Components/HomePage/Profile';
 import JamBuddyReq from '../Components/HomePage/JamBuddyReq';
 import GlobalSearch from '../Components/HomePage/GlobalSearch';
@@ -143,8 +142,7 @@ const HomePage = () => {
         const pillTabs = [
           { id: 'forYou', label: 'For You' },
           { id: 'feed', label: 'Feed' },
-          { id: 'trending', label: 'Trending' },
-          { id: 'discover', label: 'Discover' }
+          { id: 'trending', label: 'Trending' }
         ];
 
         return (
@@ -161,8 +159,6 @@ const HomePage = () => {
               <NewsFeed />
             ) : pillTab === 'trending' ? (
               <Trending />
-            ) : pillTab === 'discover' ? (
-              <Discover />
             ) : (
               <ForYou />
             )}

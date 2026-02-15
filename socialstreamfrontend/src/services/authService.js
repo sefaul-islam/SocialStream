@@ -280,15 +280,15 @@ class AuthService {
    */
   async changePassword(oldPassword, newPassword) {
     try {
-      const response = await this.authenticatedRequest('/api/user/change-password', {
-        method: 'POST',
+      const response = await this.authenticatedRequest('/api/users/change-password', {
+        method: 'PUT',
         data: { oldPassword, newPassword },
       });
 
       return response.data;
     } catch (error) {
       console.error('Change password error:', error);
-      throw new Error('Failed to change password');
+      throw new Error(error.response?.data?.message || 'Failed to change password');
     }
   }
 }

@@ -68,7 +68,7 @@ const AuthPage = () => {
     try {
       if (isLogin) {
         // Login
-        await authService.login({
+        const response = await authService.login({
           email: formData.email,
           password: formData.password,
         });
@@ -79,8 +79,17 @@ const AuthPage = () => {
         
         await new Promise(resolve => setTimeout(resolve, remainingTime));
         
-        // Redirect to the page user tried to access or home
-        navigate(from, { replace: true });
+        // Check if user has admin role
+        const userRoles = response.user?.roles || [];
+        const isAdmin = userRoles.some(role => role === 'ADMIN' || role === 'ROLE_ADMIN');
+        
+        if (isAdmin) {
+          // Redirect admin users to admin dashboard
+          navigate('/admin/dashboard', { replace: true });
+        } else {
+          // Redirect regular users to the page they tried to access or home
+          navigate(from, { replace: true });
+        }
       } else {
         // Registration - Call backend without auto-login
         const response = await fetch('http://localhost:8080/public/api/v1/register', {
