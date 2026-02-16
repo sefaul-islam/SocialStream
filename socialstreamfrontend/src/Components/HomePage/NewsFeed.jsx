@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import SuccessNotification from '../shared/SuccessNotification';
 import postService from '../../services/postService';
 import authService from '../../services/authService';
+import newsfeedService from '../../services/newsfeedService';
 
 const NewsFeed = () => {
   const navigate = useNavigate();
@@ -20,6 +21,85 @@ const NewsFeed = () => {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [contentError, setContentError] = useState('');
   const [mediaType, setMediaType] = useState('VIDEO'); // VIDEO or AUDIO
+  
+  // State for fetching friends' posts
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch friends' posts on component mount
+  useEffect(() => {
+    const fetchFriendsPosts = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const friendsPosts = await newsfeedService.getFriendsPosts();
+        
+        // Transform backend data to match UI expectations
+        const transformedPosts = friendsPosts.map(post => ({
+          id: post.id,
+          user: {
+            name: post.user.username || 'Unknown User',
+            avatar: post.user.profilePictureUrl || 'https://i.pravatar.cc/150?img=1',
+            time: formatTimeAgo(post.uploadDate)
+          },
+          content: post.description || '',
+          media: {
+            id: post.media.id,
+            type: post.media.mediaType?.toLowerCase() === 'audio' ? 'music' : 'movie',
+            title: post.media.title,
+            thumbnail: post.media.thumbnailUrl,
+            videoUrl: post.media.mediaUrl,
+            genre: post.media.genre || 'N/A',
+            rating: post.media.rating ? post.media.rating.toString() : 'N/A',
+            year: post.media.releaseYear ? post.media.releaseYear.toString() : 'N/A',
+            duration: post.media.durationInSeconds ? `${Math.floor(post.media.durationInSeconds / 60)}m` : 'N/A',
+            description: post.media.description || '',
+            director: post.media.director || '',
+            artist: post.media.artist || '',
+            cast: post.media.cast || [],
+            views: post.media.views || post.media.streamCount ? 
+              `${((post.media.views || post.media.streamCount) / 1000000).toFixed(1)}M views` : '0 views',
+            likes: post.media.likes || '0',
+            uploadDate: formatTimeAgo(post.uploadDate)
+          },
+          likes: post.likesCount || 0,
+          comments: post.comments?.length || 0
+        }));
+        
+        setPosts(transformedPosts);
+      } catch (err) {
+        console.error('Failed to fetch friends posts:', err);
+        setError(err.message || 'Failed to load posts');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFriendsPosts();
+  }, []);
+
+  // Helper function to format time ago
+  const formatTimeAgo = (dateString) => {
+    if (!dateString) return 'Recently';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 60) {
+      return diffMins <= 1 ? 'Just now' : `${diffMins} minutes ago`;
+    } else if (diffHours < 24) {
+      return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`;
+    } else if (diffDays < 30) {
+      return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
+  };
 
   // Debounced search effect for media search with pattern matching
   useEffect(() => {
@@ -75,101 +155,6 @@ const NewsFeed = () => {
       setSearching(false);
     };
   }, [mediaSearch, mediaType, showMediaSearch]);
-  
-  const posts = [
-    {
-      id: 1,
-      user: {
-        name: 'Sarah Chen',
-        avatar: 'https://i.pravatar.cc/150?img=1',
-        time: '2 hours ago'
-      },
-      content: 'Just finished watching this masterpiece! 🎬',
-      media: {
-        id: 10,
-        type: 'movie',
-        title: 'Inception',
-        thumbnail: 'https://picsum.photos/600/400?random=11',
-        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        genre: 'Sci-Fi, Thriller',
-        rating: '8.8',
-        year: '2010',
-        duration: '2h 28m',
-        description: 'A thief who steals corporate secrets through dream-sharing technology is given the inverse task of planting an idea.',
-        director: 'Christopher Nolan',
-        cast: ['Leonardo DiCaprio', 'Joseph Gordon-Levitt', 'Ellen Page', 'Tom Hardy'],
-        views: '12.5M views',
-        likes: '892K',
-        uploadDate: '1 month ago'
-      },
-      likes: 124,
-      comments: 18
-    },
-    {
-      id: 2,
-      user: {
-        name: 'Mike Johnson',
-        avatar: 'https://i.pravatar.cc/150?img=12',
-        time: '4 hours ago'
-      },
-      content: 'Listening to this on repeat! 🎵🔥',
-      media: {
-        type: 'music',
-        title: 'Midnight Vibes',
-        artist: 'The Weeknd',
-        thumbnail: 'https://picsum.photos/600/400?random=12',
-        genre: 'R&B, Pop'
-      },
-      likes: 89,
-      comments: 12
-    },
-    {
-      id: 3,
-      user: {
-        name: 'Emma Davis',
-        avatar: 'https://i.pravatar.cc/150?img=5',
-        time: '6 hours ago'
-      },
-      content: 'Movie night with the squad! Who else loves this? 🍿',
-      media: {
-        id: 11,
-        type: 'movie',
-        title: 'The Dark Knight',
-        thumbnail: 'https://picsum.photos/600/400?random=13',
-        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-        genre: 'Action, Crime',
-        rating: '9.0',
-        year: '2008',
-        duration: '2h 32m',
-        description: 'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest tests.',
-        director: 'Christopher Nolan',
-        cast: ['Christian Bale', 'Heath Ledger', 'Aaron Eckhart', 'Michael Caine'],
-        views: '18.3M views',
-        likes: '1.2M',
-        uploadDate: '2 months ago'
-      },
-      likes: 256,
-      comments: 34
-    },
-    {
-      id: 4,
-      user: {
-        name: 'Alex Rodriguez',
-        avatar: 'https://i.pravatar.cc/150?img=8',
-        time: '8 hours ago'
-      },
-      content: 'Perfect morning playlist ☕️🎶',
-      media: {
-        type: 'music',
-        title: 'Coffee Shop Jazz',
-        artist: 'Various Artists',
-        thumbnail: 'https://picsum.photos/600/400?random=14',
-        genre: 'Jazz, Ambient'
-      },
-      likes: 145,
-      comments: 23
-    }
-  ];
 
   // Search for media (video or audio) by title using the backend API
   const handleMediaSearch = async () => {
@@ -275,6 +260,40 @@ const NewsFeed = () => {
       // Create post with media ID from backend DTO response
       await postService.createPost(postData, selectedMedia.id, userInfo.userId);
       
+      // Refresh the posts list
+      const friendsPosts = await newsfeedService.getFriendsPosts();
+      const transformedPosts = friendsPosts.map(post => ({
+        id: post.id,
+        user: {
+          name: post.user.username || 'Unknown User',
+          avatar: post.user.profilePictureUrl || 'https://i.pravatar.cc/150?img=1',
+          time: formatTimeAgo(post.uploadDate)
+        },
+        content: post.description || '',
+        media: {
+          id: post.media.id,
+          type: post.media.mediaType?.toLowerCase() === 'audio' ? 'music' : 'movie',
+          title: post.media.title,
+          thumbnail: post.media.thumbnailUrl,
+          videoUrl: post.media.mediaUrl,
+          genre: post.media.genre || 'N/A',
+          rating: post.media.rating ? post.media.rating.toString() : 'N/A',
+          year: post.media.releaseYear ? post.media.releaseYear.toString() : 'N/A',
+          duration: post.media.durationInSeconds ? `${Math.floor(post.media.durationInSeconds / 60)}m` : 'N/A',
+          description: post.media.description || '',
+          director: post.media.director || '',
+          artist: post.media.artist || '',
+          cast: post.media.cast || [],
+          views: post.media.views || post.media.streamCount ? 
+            `${((post.media.views || post.media.streamCount) / 1000000).toFixed(1)}M views` : '0 views',
+          likes: post.media.likes || '0',
+          uploadDate: formatTimeAgo(post.uploadDate)
+        },
+        likes: post.likesCount || 0,
+        comments: post.comments?.length || 0
+      }));
+      setPosts(transformedPosts);
+      
       // Add fade out animation before closing
       setTimeout(() => {
         // Reset form and close modal
@@ -288,8 +307,6 @@ const NewsFeed = () => {
         
         setCreating(false);
       }, 300);
-      
-      // TODO: Refresh posts list after creation
     } catch (err) {
       console.error('Failed to create post:', err);
       
@@ -648,6 +665,96 @@ const NewsFeed = () => {
     
 
       <div className="max-w-4xl mx-auto space-y-6">
+        {/* Loading State */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-16 h-16 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-400">Loading friends' posts...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && !loading && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 text-center">
+            <svg className="w-12 h-12 text-red-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 className="text-white font-semibold text-lg mb-2">Failed to Load Posts</h3>
+            <p className="text-gray-400 mb-4">{error}</p>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={async () => {
+                setLoading(true);
+                setError(null);
+                try {
+                  const friendsPosts = await newsfeedService.getFriendsPosts();
+                  const transformedPosts = friendsPosts.map(post => ({
+                    id: post.id,
+                    user: {
+                      name: post.user.username || 'Unknown User',
+                      avatar: post.user.profilePictureUrl || 'https://i.pravatar.cc/150?img=1',
+                      time: formatTimeAgo(post.uploadDate)
+                    },
+                    content: post.description || '',
+                    media: {
+                      id: post.media.id,
+                      type: post.media.mediaType?.toLowerCase() === 'audio' ? 'music' : 'movie',
+                      title: post.media.title,
+                      thumbnail: post.media.thumbnailUrl,
+                      videoUrl: post.media.mediaUrl,
+                      genre: post.media.genre || 'N/A',
+                      rating: post.media.rating ? post.media.rating.toString() : 'N/A',
+                      year: post.media.releaseYear ? post.media.releaseYear.toString() : 'N/A',
+                      duration: post.media.durationInSeconds ? `${Math.floor(post.media.durationInSeconds / 60)}m` : 'N/A',
+                      description: post.media.description || '',
+                      director: post.media.director || '',
+                      artist: post.media.artist || '',
+                      cast: post.media.cast || [],
+                      views: post.media.views || post.media.streamCount ? 
+                        `${((post.media.views || post.media.streamCount) / 1000000).toFixed(1)}M views` : '0 views',
+                      likes: post.media.likes || '0',
+                      uploadDate: formatTimeAgo(post.uploadDate)
+                    },
+                    likes: post.likesCount || 0,
+                    comments: post.comments?.length || 0
+                  }));
+                  setPosts(transformedPosts);
+                } catch (err) {
+                  setError(err.message || 'Failed to load posts');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-400 font-medium transition-all"
+            >
+              Try Again
+            </motion.button>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && !error && posts.length === 0 && (
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-12 text-center">
+            <svg className="w-16 h-16 text-gray-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <h3 className="text-white font-semibold text-xl mb-2">No Posts Yet</h3>
+            <p className="text-gray-400 mb-4">Your friends haven't shared anything yet. Be the first to post!</p>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowCreateModal(true)}
+              className="px-6 py-3 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl font-medium transition-all text-green-400"
+            >
+              Create Your First Post
+            </motion.button>
+          </div>
+        )}
+
+        {/* Posts List */}
+        {!loading && !error && posts.length > 0 && (
+          <>
         {posts.map((post) => (
           <div
             key={post.id}
@@ -773,6 +880,8 @@ const NewsFeed = () => {
             </div>
           </div>
         ))}
+          </>
+        )}
       </div>
     </div>
   );

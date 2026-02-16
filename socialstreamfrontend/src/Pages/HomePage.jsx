@@ -11,7 +11,6 @@ import Profile from '../Components/HomePage/Profile';
 import JamBuddyReq from '../Components/HomePage/JamBuddyReq';
 import GlobalSearch from '../Components/HomePage/GlobalSearch';
 import Room from '../Components/HomePage/Room';
-import Notification from '../Components/HomePage/Notification';
 import Messaging from '../Components/HomePage/Messaging';
 import authService from '../services/authService';
 import useMessageStore from '../stores/useMessageStore';
@@ -108,13 +107,6 @@ const HomePage = () => {
       ),
       title: 'Messaging',
       badge: unreadMessageCount > 0 ? String(unreadMessageCount) : undefined
-    },
-    {
-      id: 'notifications',
-      name: 'Notifications',
-      icon: <img src={assets.notificationicon} alt="Notifications" className="w-6 h-6" />,
-      title: 'Notifications',
-      badge: '5'
     }
   ];
 
@@ -174,9 +166,6 @@ const HomePage = () => {
 
       case 'messaging':
         return <Messaging />;
-
-      case 'notifications':
-        return <Notification />;
       
       case 'profile':
         return <Profile user={currentUser} />;

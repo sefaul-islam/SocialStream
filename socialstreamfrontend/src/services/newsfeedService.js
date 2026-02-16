@@ -118,6 +118,23 @@ class NewsFeedService {
       throw new Error(errorMessage);
     }
   }
+
+  /**
+   * Get posts from user's friends
+   * Fetches posts created by users with accepted friendship status
+   * @returns {Promise<Array>} Array of friends' posts ordered by upload date
+   */
+  async getFriendsPosts() {
+    try {
+      const axiosInstance = createAuthAxios();
+      const response = await axiosInstance.get('/newsfeed/friends-posts');
+      return response.data;
+    } catch (error) {
+      console.error('Get friends posts error:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to fetch friends posts';
+      throw new Error(errorMessage);
+    }
+  }
 }
 
 const newsfeedService = new NewsFeedService();
