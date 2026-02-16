@@ -1,9 +1,11 @@
 package com.example.SocialStream.controllers;
 
+import com.example.SocialStream.DTO.ChangePasswordDTO;
 import com.example.SocialStream.DTO.PostResponseDTO;
 import com.example.SocialStream.DTO.UserDTO;
 import com.example.SocialStream.auth.CustomUserDetails;
 import com.example.SocialStream.services.UserService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -45,6 +47,20 @@ public class UserController {
             return ResponseEntity.ok(updatedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PutMapping("/change-password")
+    public ResponseEntity<Map<String, String>> changePassword(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @Valid @RequestBody ChangePasswordDTO changePasswordDTO) {
+        try {
+            Long userId = userDetails.getUserId();
+            userService.changePassword(userId, changePasswordDTO.getOldPassword(), changePasswordDTO.getNewPassword());
+            
+            return ResponseEntity.ok(Map.of("message", "Password changed successfully"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 }

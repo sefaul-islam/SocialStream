@@ -70,4 +70,21 @@ public class UserService {
         User updatedUser = userRepository.save(user);
         return new UserDTO(updatedUser);
     }
+
+    public void changePassword(Long userId, String oldPassword, String newPassword) {
+        // Find user by ID
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
+
+        // Verify old password matches
+        if (!bCryptPasswordEncoder.matches(oldPassword, user.getPassword())) {
+            throw new InvalidOperationException("Current password is incorrect");
+        }
+
+        // Encode and set new password
+        user.setPassword(bCryptPasswordEncoder.encode(newPassword));
+
+        // Save updated user
+        userRepository.save(user);
+    }
 }

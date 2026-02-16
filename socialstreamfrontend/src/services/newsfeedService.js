@@ -64,20 +64,69 @@ class NewsFeedService {
   }
 
   /**
-   * Like or unlike a post
+   * Like or unlike a post (toggle)
    * @param {number} postId - Post ID
    * @returns {Promise<Object>} Updated post data
    */
   async toggleLike(postId) {
     try {
       const axiosInstance = createAuthAxios();
-      // TODO: Replace with actual endpoint when backend implements it
       const response = await axiosInstance.post(`/newsfeed/posts/${postId}/like`);
       return response.data;
     } catch (error) {
       console.error('Toggle like error:', error);
       const errorMessage = error.response?.data?.message || 'Failed to toggle like';
       throw new Error(errorMessage);
+    }
+  }
+
+  /**
+   * Add a like to a post (if not already liked)
+   * @param {number} postId - Post ID
+   * @returns {Promise<Object>} Updated post data
+   */
+  async addLike(postId) {
+    try {
+      const axiosInstance = createAuthAxios();
+      const response = await axiosInstance.post(`/newsfeed/posts/${postId}/like/add`);
+      return response.data;
+    } catch (error) {
+      console.error('Add like error:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to add like';
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
+   * Remove a like from a post
+   * @param {number} postId - Post ID
+   * @returns {Promise<Object>} Updated post data
+   */
+  async removeLike(postId) {
+    try {
+      const axiosInstance = createAuthAxios();
+      const response = await axiosInstance.delete(`/newsfeed/posts/${postId}/like`);
+      return response.data;
+    } catch (error) {
+      console.error('Remove like error:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to remove like';
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
+   * Check if user has liked a post
+   * @param {number} postId - Post ID
+   * @returns {Promise<boolean>} True if user has liked the post
+   */
+  async getLikeStatus(postId) {
+    try {
+      const axiosInstance = createAuthAxios();
+      const response = await axiosInstance.get(`/newsfeed/posts/${postId}/like/status`);
+      return response.data;
+    } catch (error) {
+      console.error('Get like status error:', error);
+      return false;
     }
   }
 
@@ -90,7 +139,6 @@ class NewsFeedService {
   async addComment(postId, content) {
     try {
       const axiosInstance = createAuthAxios();
-      // TODO: Replace with actual endpoint when backend implements it
       const response = await axiosInstance.post(`/newsfeed/posts/${postId}/comments`, {
         content
       });

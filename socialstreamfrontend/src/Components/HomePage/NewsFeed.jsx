@@ -26,6 +26,11 @@ const NewsFeed = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // State for like and comment interactions
+  const [likedPosts, setLikedPosts] = useState(new Set());
+  const [showComments, setShowComments] = useState({});
+  const [commentInputs, setCommentInputs] = useState({});
 
   // Fetch friends' posts on component mount
   useEffect(() => {
@@ -64,10 +69,25 @@ const NewsFeed = () => {
             uploadDate: formatTimeAgo(post.uploadDate)
           },
           likes: post.likesCount || 0,
-          comments: post.comments?.length || 0
+          comments: post.comments?.length || 0,
+          commentsList: post.comments || []
         }));
         
         setPosts(transformedPosts);
+        
+        // Fetch like status for each post
+        const likeStatuses = await Promise.all(
+          transformedPosts.map(post => newsfeedService.getLikeStatus(post.id))
+        );
+        
+        // Update likedPosts set based on fetched statuses
+        const newLikedPosts = new Set();
+        transformedPosts.forEach((post, index) => {
+          if (likeStatuses[index]) {
+            newLikedPosts.add(post.id);
+          }
+        });
+        setLikedPosts(newLikedPosts);
       } catch (err) {
         console.error('Failed to fetch friends posts:', err);
         setError(err.message || 'Failed to load posts');
@@ -290,7 +310,8 @@ const NewsFeed = () => {
           uploadDate: formatTimeAgo(post.uploadDate)
         },
         likes: post.likesCount || 0,
-        comments: post.comments?.length || 0
+        comments: post.comments?.length || 0,
+        commentsList: post.comments || []
       }));
       setPosts(transformedPosts);
       
@@ -342,6 +363,86 @@ const NewsFeed = () => {
 
   const handleCancelConfirmation = () => {
     setShowConfirmation(false);
+  };
+
+  // Handle like button click
+  const handleLikePost = async (postId) => {
+    try {
+      const updatedPost = await newsfeedService.toggleLike(postId);
+      
+      // Update the posts state with new like count
+      setPosts(posts.map(post => 
+        post.id === postId 
+          ? { ...post, likes: updatedPost.likesCount }
+          : post
+      ));
+      
+      // Track that user liked this post
+      setLikedPosts(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(postId)) {
+          newSet.delete(postId);
+        } else {
+          newSet.add(postId);
+        }
+        return newSet;
+      });
+    } catch (err) {
+      console.error('Failed to like post:', err);
+      setSuccessMessage('Failed to like post');
+      setShowSuccess(true);
+    }
+  };
+
+  // Handle comment button click
+  const handleToggleComments = (postId) => {
+    setShowComments(prev => ({
+      ...prev,
+      [postId]: !prev[postId]
+    }));
+  };
+
+  // Handle comment input change
+  const handleCommentInputChange = (postId, value) => {
+    setCommentInputs(prev => ({
+      ...prev,
+      [postId]: value
+    }));
+  };
+
+  // Handle comment submission
+  const handleSubmitComment = async (postId) => {
+    const content = commentInputs[postId]?.trim();
+    if (!content) return;
+
+    try {
+      const newComment = await newsfeedService.addComment(postId, content);
+      
+      // Update the posts state with new comment
+      setPosts(posts.map(post => {
+        if (post.id === postId) {
+          return {
+            ...post,
+            comments: post.comments + 1,
+            commentsList: [...(post.commentsList || []), newComment]
+          };
+        }
+        return post;
+      }));
+      
+      // Clear the comment input
+      setCommentInputs(prev => ({
+        ...prev,
+        [postId]: ''
+      }));
+      
+      setSuccessMessage('Comment added successfully!');
+      setShowSuccess(true);
+    } catch (err) {
+      console.error('Failed to add comment:', err);
+      setSuccessMessage('Failed to add comment');
+      setShowSuccess(true);
+    }
   };
 
   return (
@@ -717,7 +818,8 @@ const NewsFeed = () => {
                       uploadDate: formatTimeAgo(post.uploadDate)
                     },
                     likes: post.likesCount || 0,
-                    comments: post.comments?.length || 0
+                    comments: post.comments?.length || 0,
+                    commentsList: post.comments || []
                   }));
                   setPosts(transformedPosts);
                 } catch (err) {
@@ -858,25 +960,95 @@ const NewsFeed = () => {
             </div>
 
             {/* Actions */}
-            <div className="px-6 py-4 border-t border-green-500/10 flex items-center gap-6">
-              <button className="flex items-center gap-2 text-gray-400 hover:text-green-400 transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
-                <span className="font-semibold">{post.likes}</span>
-              </button>
-              <button className="flex items-center gap-2 text-gray-400 hover:text-green-400 transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                <span className="font-semibold">{post.comments}</span>
-              </button>
-              <button className="flex items-center gap-2 text-gray-400 hover:text-green-400 transition-colors ml-auto">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-                <span className="font-semibold">Share</span>
-              </button>
+            <div className="px-6 py-4 border-t border-green-500/10">
+              <div className="flex items-center gap-6">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleLikePost(post.id)}
+                  className={`flex items-center gap-2 transition-colors ${
+                    likedPosts.has(post.id)
+                      ? 'text-red-400'
+                      : 'text-gray-400 hover:text-red-400'
+                  }`}
+                >
+                  <svg className="w-6 h-6" fill={likedPosts.has(post.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                  <span className="font-semibold">{post.likes}</span>
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleToggleComments(post.id)}
+                  className={`flex items-center gap-2 transition-colors ${
+                    showComments[post.id]
+                      ? 'text-green-400'
+                      : 'text-gray-400 hover:text-green-400'
+                  }`}
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <span className="font-semibold">{post.comments}</span>
+                </motion.button>
+                <button className="flex items-center gap-2 text-gray-400 hover:text-green-400 transition-colors ml-auto">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                  <span className="font-semibold">Share</span>
+                </button>
+              </div>
+
+              {/* Comment Input Section */}
+              {showComments[post.id] && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-4 pt-4 border-t border-green-500/10"
+                >
+                  {/* Display existing comments */}
+                  {post.commentsList && post.commentsList.length > 0 && (
+                    <div className="mb-4 space-y-3 max-h-60 overflow-y-auto">
+                      {post.commentsList.map((comment) => (
+                        <div key={comment.id} className="bg-white/5 rounded-lg p-3">
+                          <p className="text-green-400 font-semibold text-sm mb-1">
+                            {comment.authorUsername}
+                          </p>
+                          <p className="text-gray-300 text-sm">{comment.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Comment input */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Write a comment..."
+                      value={commentInputs[post.id] || ''}
+                      onChange={(e) => handleCommentInputChange(post.id, e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSubmitComment(post.id);
+                        }
+                      }}
+                      className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-green-500/50 transition-all text-white placeholder-gray-500"
+                    />
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleSubmitComment(post.id)}
+                      disabled={!commentInputs[post.id]?.trim()}
+                      className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg font-medium transition-all text-green-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Post
+                    </motion.button>
+                  </div>
+                </motion.div>
+              )}
             </div>
           </div>
         ))}
