@@ -1,0 +1,4 @@
+# Runtime
+*.pid
+*.log
+dump.rdb

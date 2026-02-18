@@ -26,4 +26,6 @@ public class Video extends Media{
 
     @Column(columnDefinition = "TEXT")
     private String cast;
+
+    private String genre;
 }

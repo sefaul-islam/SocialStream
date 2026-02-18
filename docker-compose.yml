@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  recommendation-service:
+    build: ./SocialStream/recommendation-service
+    container_name: recommendation-service
+    ports:
+      - "8001:8001"
+    environment:
+      - DB_HOST=${DB_HOST:-localhost}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - MODEL_PATH=/app/models/collaborative_filtering_model.pkl
+    volumes:
+      - ./SocialStream/recommendation-service/models:/app/models
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - socialstream-network
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: socialstream-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_USER=${DB_USER}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - socialstream-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: socialstream-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - socialstream-network
+    restart: unless-stopped
+
+networks:
+  socialstream-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:

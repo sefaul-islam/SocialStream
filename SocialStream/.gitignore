@@ -32,6 +32,13 @@ build/
 ### VS Code ###
 .vscode/
 
+### Logs ###
+*.log
+
+### Runtime ###
+*.pid
+dump.rdb
+
 ### Environment Variables ###
 .env
 .env.local

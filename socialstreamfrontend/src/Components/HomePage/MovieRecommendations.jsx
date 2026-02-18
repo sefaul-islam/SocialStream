@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const MovieRecommendations = ({ title = 'Recommended for You' }) => {
+const MovieRecommendations = ({ title = 'Recommended for You', movies = [] }) => {
   const scrollContainerRef = useRef(null);
   const navigate = useNavigate();
 
@@ -15,104 +15,37 @@ const MovieRecommendations = ({ title = 'Recommended for You' }) => {
     }
   };
 
-  const movies = [
-    {
-      id: 4,
-      thumbnail: 'https://picsum.photos/300/400?random=1',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-      title: 'Cosmic Journey',
-      year: '2024',
-      rating: '8.5',
-      duration: '2h 15m',
-      genre: 'Sci-Fi',
-      description: 'An epic space odyssey following a team of explorers as they venture into the unknown reaches of the cosmos.',
-      director: 'Christopher Nolan',
-      cast: ['Matthew McConaughey', 'Anne Hathaway', 'Jessica Chastain'],
-      views: '4.5M views',
-      likes: '287K',
-      uploadDate: '1 month ago'
-    },
-    {
-      id: 5,
-      thumbnail: 'https://picsum.photos/300/400?random=2',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-      title: 'Shadow Realm',
-      year: '2025',
-      rating: '9.1',
-      duration: '1h 58m',
-      genre: 'Action',
-      description: 'A warrior must navigate through a mysterious shadow dimension to save their world from darkness.',
-      director: 'Denis Villeneuve',
-      cast: ['Timothée Chalamet', 'Zendaya', 'Oscar Isaac'],
-      views: '3.2M views',
-      likes: '198K',
-      uploadDate: '2 weeks ago'
-    },
-    {
-      id: 6,
-      thumbnail: 'https://picsum.photos/300/400?random=3',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-      title: 'Ocean Deep',
-      year: '2024',
-      rating: '7.8',
-      duration: '2h 5m',
-      genre: 'Drama',
-      description: 'A deep dive into the mysteries of the ocean and the human spirit.',
-      director: 'James Cameron',
-      cast: ['Sam Worthington', 'Zoe Saldana', 'Sigourney Weaver'],
-      views: '2.8M views',
-      likes: '145K',
-      uploadDate: '3 weeks ago'
-    },
-    {
-      id: 7,
-      thumbnail: 'https://picsum.photos/300/400?random=4',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-      title: 'Electric Dreams',
-      year: '2025',
-      rating: '8.9',
-      duration: '1h 45m',
-      genre: 'Thriller',
-      description: 'In a world where dreams can be digitized, one person discovers a dark conspiracy.',
-      director: 'Rian Johnson',
-      cast: ['Daniel Craig', 'Ana de Armas', 'Chris Evans'],
-      views: '5.1M views',
-      likes: '312K',
-      uploadDate: '1 week ago'
-    },
-    {
-      id: 8,
-      thumbnail: 'https://picsum.photos/300/400?random=5',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-      title: 'Last Frontier',
-      year: '2024',
-      rating: '8.2',
-      duration: '2h 20m',
-      genre: 'Adventure',
-      description: 'An expedition to the last unexplored territories on Earth reveals ancient secrets.',
-      director: 'Ridley Scott',
-      cast: ['Matt Damon', 'Jessica Chastain', 'Kate Mara'],
-      views: '3.7M views',
-      likes: '223K',
-      uploadDate: '2 weeks ago'
-    },
-    {
-      id: 9,
-      thumbnail: 'https://picsum.photos/300/400?random=6',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-      title: 'Neon Nights',
-      year: '2025',
-      rating: '7.6',
-      duration: '1h 52m',
-      genre: 'Romance',
-      description: 'A love story set against the vibrant backdrop of a neon-lit metropolis.',
-      director: 'Greta Gerwig',
-      cast: ['Saoirse Ronan', 'Timothée Chalamet', 'Laura Dern'],
-      views: '2.1M views',
-      likes: '167K',
-      uploadDate: '4 days ago'
+  // If no movies, show empty state
+  if (!movies || movies.length === 0) {
+    return (
+      <div className="px-16 py-12 bg-black">
+        <h2 className="text-3xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent mb-8">
+          {title}
+        </h2>
+        <div className="text-center py-20">
+          <p className="text-gray-400 text-lg">No recommendations available at the moment</p>
+          <p className="text-gray-500 text-sm mt-2">Watch more videos to get personalized recommendations</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Helper function to format duration
+  const formatDuration = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  };
+
+  // Helper function to format view count
+  const formatViews = (count) => {
+    if (count >= 1000000) {
+      return `${(count / 1000000).toFixed(1)}M views`;
+    } else if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}K views`;
     }
-  ];
+    return `${count} views`;
+  };
 
   return (
     <div className="px-16 py-12 bg-black">
@@ -156,18 +89,18 @@ const MovieRecommendations = ({ title = 'Recommended for You' }) => {
                 video: {
                   id: movie.id,
                   title: movie.title,
-                  videoUrl: movie.videoUrl,
-                  thumbnail: movie.thumbnail,
+                  videoUrl: movie.mediaUrl,
+                  thumbnail: movie.thumbnailUrl,
                   description: movie.description,
                   year: movie.year,
-                  duration: movie.duration,
-                  rating: parseFloat(movie.rating),
-                  genre: [movie.genre],
+                  duration: movie.durationInSeconds ? formatDuration(movie.durationInSeconds) : 'N/A',
+                  rating: movie.rating,
+                  genre: movie.genre ? [movie.genre] : [],
                   director: movie.director,
-                  cast: movie.cast,
-                  views: movie.views,
-                  likes: movie.likes,
-                  uploadDate: movie.uploadDate
+                  cast: movie.cast || [],
+                  views: movie.viewCount ? formatViews(movie.viewCount) : '0 views',
+                  likes: movie.likes || '0',
+                  uploadDate: movie.uploadedAt || ''
                 }
               }
             })}
@@ -176,7 +109,7 @@ const MovieRecommendations = ({ title = 'Recommended for You' }) => {
             {/* Thumbnail */}
             <div className="relative overflow-hidden rounded-xl mb-3 border border-green-500/10 group-hover:border-green-500/40 transition-all duration-300">
               <img
-                src={movie.thumbnail}
+                src={movie.thumbnailUrl || 'https://picsum.photos/300/400?random=' + movie.id}
                 alt={movie.title}
                 className="w-full aspect-[2/3] object-cover group-hover:scale-110 transition-transform duration-500"
               />
@@ -187,7 +120,7 @@ const MovieRecommendations = ({ title = 'Recommended for You' }) => {
                   {/* Rating */}
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-yellow-400 text-sm">★</span>
-                    <span className="text-white font-semibold text-sm">{movie.rating}</span>
+                    <span className="text-white font-semibold text-sm">{movie.rating || 'N/A'}</span>
                   </div>
                   
                   {/* Play Button */}
@@ -207,13 +140,15 @@ const MovieRecommendations = ({ title = 'Recommended for You' }) => {
                 {movie.title}
               </h3>
               <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>{movie.year}</span>
+                <span>{movie.year || 'N/A'}</span>
                 <span>•</span>
-                <span>{movie.duration}</span>
+                <span>{movie.durationInSeconds ? formatDuration(movie.durationInSeconds) : 'N/A'}</span>
               </div>
-              <div className="inline-block px-2 py-0.5 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-400">
-                {movie.genre}
-              </div>
+              {movie.genre && (
+                <div className="inline-block px-2 py-0.5 bg-green-500/10 border border-green-500/30 rounded text-xs text-green-400">
+                  {movie.genre}
+                </div>
+              )}
             </div>
           </div>
         ))}

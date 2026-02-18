@@ -77,7 +77,9 @@ public class SecurityConfig {
                                     "/error",
                                     "/ws/**",
                                     "/ws",
-                                    "/login"
+                                    "/login",
+                                    "/api/recommendations/trending",
+                                    "/api/recommendations/health"
                             ).permitAll();
                             authorize.anyRequest().authenticated();
                         }

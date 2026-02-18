@@ -6,10 +6,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080
 /**
  * Get personalized "For You" recommendations
  * @param {number} limit - Number of recommendations to fetch (default: 20)
- * @param {string} algorithm - Algorithm to use: 'hybrid', 'content_based', 'collaborative', 'trending'
- * @returns {Promise<Array>} Array of recommended videos
+ * @returns {Promise<Object>} Recommendation response with videos array
  */
-export const getForYouRecommendations = async (limit = 20, algorithm = 'hybrid') => {
+export const getForYouRecommendations = async (limit = 20) => {
   try {
     const token = authService.getToken();
     
@@ -20,7 +19,7 @@ export const getForYouRecommendations = async (limit = 20, algorithm = 'hybrid')
     const response = await axios.get(
       `${API_BASE_URL}/api/recommendations/for-you`,
       {
-        params: { limit, algorithm },
+        params: { limit },
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -28,25 +27,25 @@ export const getForYouRecommendations = async (limit = 20, algorithm = 'hybrid')
       }
     );
 
+    // Response format: { recommendations: [...], algorithm: "...", totalResults: N }
     return response.data;
   } catch (error) {
     console.error('Error fetching For You recommendations:', error);
     
-    // Return empty array on error to prevent UI crashes
+    // Return empty result on error
     if (error.response?.status === 401) {
-      // Token expired - redirect to login
       authService.logout();
       window.location.href = '/auth';
     }
     
-    return [];
+    return { recommendations: [], algorithm: 'error', totalResults: 0 };
   }
 };
 
 /**
  * Get trending videos
  * @param {number} limit - Number of trending videos to fetch (default: 30)
- * @returns {Promise<Array>} Array of trending videos
+ * @returns {Promise<Object>} Recommendation response with videos array
  */
 export const getTrendingRecommendations = async (limit = 30) => {
   try {
@@ -60,44 +59,132 @@ export const getTrendingRecommendations = async (limit = 30) => {
       }
     );
 
+    // Response format: { recommendations: [...], algorithm: "...", totalResults: N }
     return response.data;
   } catch (error) {
     console.error('Error fetching trending recommendations:', error);
-    return [];
+    return { recommendations: [], algorithm: 'error', totalResults: 0 };
   }
 };
 
 /**
- * Group videos by category for trending display
- * @param {Array} videos - Array of video objects
- * @returns {Object} Videos grouped by category
+ * Record a video view interaction
+ * @param {number} videoId - ID of the video
+ * @param {number} watchDuration - How long user watched (seconds)
+ * @param {number} watchPercentage - Percentage watched (0-100)
+ * @returns {Promise<Object>} Response from API
  */
-export const groupVideosByCategory = (videos) => {
-  const grouped = {
-    Action: [],
-    Comedy: [],
-    Drama: [],
-    'Sci-Fi': [],
-    Horror: [],
-    Other: []
-  };
+export const recordVideoView = async (videoId, watchDuration, watchPercentage) => {
+  try {
+    const token = authService.getToken();
+    if (!token) return;
 
-  videos.forEach(video => {
-    // Use director field as temporary category until category field is added
-    const category = video.director || 'Other';
-    
-    if (grouped[category]) {
-      grouped[category].push(video);
-    } else {
-      grouped.Other.push(video);
-    }
-  });
+    const response = await axios.post(
+      `${API_BASE_URL}/api/interactions/view`,
+      { videoId, watchDuration, watchPercentage },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
-  return grouped;
+    return response.data;
+  } catch (error) {
+    console.error('Error recording video view:', error);
+    return null;
+  }
+};
+
+/**
+ * Record a video like/dislike
+ * @param {number} videoId - ID of the video
+ * @param {boolean} isLiked - true for like, false for dislike
+ * @returns {Promise<Object>} Response from API
+ */
+export const recordVideoLike = async (videoId, isLiked) => {
+  try {
+    const token = authService.getToken();
+    if (!token) throw new Error('Authentication required');
+
+    const response = await axios.post(
+      `${API_BASE_URL}/api/interactions/like`,
+      { videoId, isLiked },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error recording video like:', error);
+    throw error;
+  }
+};
+
+/**
+ * Remove a video like/dislike
+ * @param {number} videoId - ID of the video
+ * @returns {Promise<Object>} Response from API
+ */
+export const removeVideoLike = async (videoId) => {
+  try {
+    const token = authService.getToken();
+    if (!token) throw new Error('Authentication required');
+
+    const response = await axios.delete(
+      `${API_BASE_URL}/api/interactions/like/${videoId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error removing video like:', error);
+    throw error;
+  }
+};
+
+/**
+ * Record a search query
+ * @param {string} query - Search query text
+ * @returns {Promise<Object>} Response from API
+ */
+export const recordSearch = async (query) => {
+  try {
+    const token = authService.getToken();
+    if (!token) return;
+
+    const response = await axios.post(
+      `${API_BASE_URL}/api/interactions/search`,
+      { query },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error recording search:', error);
+    return null;
+  }
 };
 
 export const recommendationService = {
   getForYouRecommendations,
   getTrendingRecommendations,
-  groupVideosByCategory
+  recordVideoView,
+  recordVideoLike,
+  removeVideoLike,
+  recordSearch
 };

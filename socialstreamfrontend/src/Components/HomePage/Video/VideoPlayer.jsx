@@ -1,9 +1,10 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
 import './VideoPlayer.css';
 import { useVideoStore, useRoomStore } from '../../../stores/useRoomStore';
 import { motion, AnimatePresence } from 'framer-motion';
+import { recordVideoView } from '../../../services/recommendationService';
 
 //need to whole refactor this videoplayer.jsx file, it's not pretty enough
 
@@ -15,6 +16,8 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
   const [hasUserResponded, setHasUserResponded] = useState(false);
   const syncIntervalRef = useRef(null);
   const ignoreEventsRef = useRef(false);
+  const viewRecordedRef = useRef(false);
+  const watchStartTimeRef = useRef(null);
 
   // Zustand stores - use selective subscriptions to avoid unnecessary re-renders
   const setPlayerRef = useVideoStore(state => state.setPlayerRef);
@@ -47,6 +50,35 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
   // Backend returns camelCase (mediaUrl), but some legacy code uses lowercase (mediaurl)
   const videoSource = videoUrl || video?.mediaUrl || video?.mediaurl || video?.url || video?.videoUrl || video?.videoPath;
   const posterImage = thumbnail || video?.thumbnailUrl || video?.thumbnailurl || video?.thumbnail || video?.posterUrl;
+
+  // Send view record to backend
+  const sendViewRecord = useCallback(() => {
+    const player = playerRef.current;
+    if (!player || viewRecordedRef.current || !video?.id) return;
+
+    const currentTime = player.currentTime();
+    const duration = player.duration();
+    if (!duration || duration <= 0 || currentTime < 5) return; // Skip if watched less than 5 seconds
+
+    const watchDuration = Math.floor(currentTime);
+    const watchPercentage = Math.min(100, Math.round((currentTime / duration) * 100));
+
+    viewRecordedRef.current = true;
+    recordVideoView(video.id, watchDuration, watchPercentage);
+  }, [video?.id]);
+
+  // Reset view tracking when video changes
+  useEffect(() => {
+    viewRecordedRef.current = false;
+    watchStartTimeRef.current = null;
+  }, [video?.id, videoSource]);
+
+  // Record view on unmount
+  useEffect(() => {
+    return () => {
+      sendViewRecord();
+    };
+  }, [sendViewRecord]);
   
   // Determine video type
   const getVideoType = (src) => {
@@ -334,6 +366,11 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
       player.on('timeupdate', handleTimeUpdate);
       player.on('keydown', handleKeyDown);
 
+      const handleEnded = () => {
+        sendViewRecord();
+      };
+      player.on('ended', handleEnded);
+
       // Start periodic sync (every 30 seconds)
       syncIntervalRef.current = setInterval(() => {
         const position = player.currentTime();
@@ -350,33 +387,40 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
         player.off('seeked', handleSeeked);
         player.off('timeupdate', handleTimeUpdate);
         player.off('keydown', handleKeyDown);
-        
+        player.off('ended', handleEnded);
+
         if (syncIntervalRef.current) {
           clearInterval(syncIntervalRef.current);
         }
-        
+
         console.log('🧹 Host event listeners removed');
       };
     } else if (roomId) {
       // Viewers in room: listen to video events for debugging
       console.log('[Viewer] Setting up event listeners');
-      
+
       const handlePlay = () => {
         console.log('[Viewer] Local play event triggered');
       };
-      
+
       const handlePause = () => {
         console.log('[Viewer] Local pause event triggered');
+        sendViewRecord();
       };
-      
+
       const handleTimeUpdate = () => {
         const position = player.currentTime();
         updatePosition(position);
       };
 
+      const handleEnded = () => {
+        sendViewRecord();
+      };
+
       player.on('play', handlePlay);
       player.on('pause', handlePause);
       player.on('timeupdate', handleTimeUpdate);
+      player.on('ended', handleEnded);
 
       console.log('✅ Viewer event listeners registered');
 
@@ -384,24 +428,37 @@ const VideoPlayer = ({ video, roomId, isHost, videoUrl, thumbnail }) => {
         player.off('play', handlePlay);
         player.off('pause', handlePause);
         player.off('timeupdate', handleTimeUpdate);
+        player.off('ended', handleEnded);
         console.log('🧹 Viewer event listeners removed');
       };
     } else {
       // Solo mode: just update local position
       console.log('[Solo] Setting up timeupdate listener');
-      
+
       const handleTimeUpdate = () => {
         const position = player.currentTime();
         updatePosition(position);
       };
 
+      const handlePause = () => {
+        sendViewRecord();
+      };
+
+      const handleEnded = () => {
+        sendViewRecord();
+      };
+
       player.on('timeupdate', handleTimeUpdate);
+      player.on('pause', handlePause);
+      player.on('ended', handleEnded);
 
       return () => {
         player.off('timeupdate', handleTimeUpdate);
+        player.off('pause', handlePause);
+        player.off('ended', handleEnded);
       };
     }
-  }, [isHost, roomId, isReady]); // Re-run when role or room changes
+  }, [isHost, roomId, isReady, sendViewRecord]); // Re-run when role or room changes
 
   // Update video source when video changes
   useEffect(() => {

@@ -35,6 +35,21 @@ public class JwtUtil {
                 .signWith(getSignInKey())
                 .compact();
     }
+
+    /**
+     * Generate token for service-to-service communication
+     */
+    public String generateServiceToken(String serviceName) {
+        return Jwts
+                .builder()
+                .subject(serviceName)
+                .issuedAt(new Date(System.currentTimeMillis()))
+                .expiration(new Date(System.currentTimeMillis() + jwtExpirationInMs))
+                .claim("roles", java.util.List.of("ROLE_SERVICE"))
+                .claim("id", 0L)
+                .signWith(getSignInKey())
+                .compact();
+    }
     public Claims getClaims(String token) {
         try {
             return Jwts

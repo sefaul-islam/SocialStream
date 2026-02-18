@@ -1,13 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import VideoPlayer from '../Components/HomePage/Video/VideoPlayer';
+import { recordVideoLike, removeVideoLike, getTrendingRecommendations } from '../services/recommendationService';
+import axios from 'axios';
+import authService from '../services/authService';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 const VideoDetailsPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
   const [activeTab, setActiveTab] = useState('overview');
+  const [isLiked, setIsLiked] = useState(false);
+  const [isDisliked, setIsDisliked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [dislikeCount, setDislikeCount] = useState(0);
+  const [relatedVideos, setRelatedVideos] = useState([]);
+  const [relatedLoading, setRelatedLoading] = useState(true);
 
   // Get video data from location state or use default
   const defaultVideoData = {
@@ -28,13 +39,119 @@ const VideoDetailsPage = () => {
   };
 
   const videoData = location.state?.video || defaultVideoData;
+  const videoId = parseInt(id) || videoData.id;
 
-  const relatedVideos = [
-    { id: 2, title: 'The Matrix', thumbnail: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?w=400', duration: '2h 16m', views: '5.2M' },
-    { id: 3, title: 'The Matrix Revolutions', thumbnail: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=400', duration: '2h 9m', views: '1.8M' },
-    { id: 4, title: 'Inception', thumbnail: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=400', duration: '2h 28m', views: '8.1M' },
-    { id: 5, title: 'Interstellar', thumbnail: 'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=400', duration: '2h 49m', views: '6.3M' },
-  ];
+  // Fetch like/dislike counts and related videos
+  useEffect(() => {
+    const fetchLikeCounts = async () => {
+      try {
+        const token = authService.getToken();
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const [likesRes, dislikesRes] = await Promise.all([
+          axios.get(`${API_BASE_URL}/api/interactions/video/${videoId}/likes`, { headers }),
+          axios.get(`${API_BASE_URL}/api/interactions/video/${videoId}/dislikes`, { headers })
+        ]);
+        setLikeCount(likesRes.data || 0);
+        setDislikeCount(dislikesRes.data || 0);
+      } catch (err) {
+        console.error('Error fetching like counts:', err);
+      }
+    };
+
+    const fetchRelatedVideos = async () => {
+      try {
+        setRelatedLoading(true);
+        const response = await getTrendingRecommendations(10);
+        const filtered = (response.recommendations || []).filter(v => v.id !== videoId);
+        setRelatedVideos(filtered.slice(0, 6));
+      } catch (err) {
+        console.error('Error fetching related videos:', err);
+      } finally {
+        setRelatedLoading(false);
+      }
+    };
+
+    fetchLikeCounts();
+    fetchRelatedVideos();
+    setIsLiked(false);
+    setIsDisliked(false);
+  }, [videoId]);
+
+  const handleLike = async () => {
+    try {
+      if (isLiked) {
+        await removeVideoLike(videoId);
+        setIsLiked(false);
+        setLikeCount(prev => Math.max(0, prev - 1));
+      } else {
+        await recordVideoLike(videoId, true);
+        setIsLiked(true);
+        setLikeCount(prev => prev + 1);
+        if (isDisliked) {
+          setIsDisliked(false);
+          setDislikeCount(prev => Math.max(0, prev - 1));
+        }
+      }
+    } catch (err) {
+      console.error('Error toggling like:', err);
+    }
+  };
+
+  const handleDislike = async () => {
+    try {
+      if (isDisliked) {
+        await removeVideoLike(videoId);
+        setIsDisliked(false);
+        setDislikeCount(prev => Math.max(0, prev - 1));
+      } else {
+        await recordVideoLike(videoId, false);
+        setIsDisliked(true);
+        setDislikeCount(prev => prev + 1);
+        if (isLiked) {
+          setIsLiked(false);
+          setLikeCount(prev => Math.max(0, prev - 1));
+        }
+      }
+    } catch (err) {
+      console.error('Error toggling dislike:', err);
+    }
+  };
+
+  const formatDuration = (seconds) => {
+    if (!seconds) return 'N/A';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  };
+
+  const formatViews = (count) => {
+    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+    return `${count || 0}`;
+  };
+
+  const handleRelatedVideoClick = (video) => {
+    navigate(`/video/${video.id}`, {
+      state: {
+        video: {
+          id: video.id,
+          title: video.title,
+          videoUrl: video.mediaUrl,
+          thumbnail: video.thumbnailUrl,
+          description: video.description,
+          year: video.year,
+          duration: video.durationInSeconds ? formatDuration(video.durationInSeconds) : 'N/A',
+          rating: video.rating,
+          genre: video.genre ? [video.genre] : [],
+          director: video.director,
+          cast: video.cast || [],
+          views: video.viewCount ? `${formatViews(video.viewCount)} views` : '0 views',
+          likes: '0',
+          uploadDate: video.uploadedAt || ''
+        }
+      }
+    });
+  };
 
   const comments = [
     { id: 1, user: 'John Doe', avatar: 'https://i.pravatar.cc/150?img=1', comment: 'This movie is a masterpiece! The action sequences are mind-blowing.', time: '2 days ago', likes: 234 },
@@ -115,16 +232,40 @@ const VideoDetailsPage = () => {
               </div>
             </div>
 
-            {/* Engagement Stats */}
-            <div className="flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+            {/* Engagement Stats with Like/Dislike Buttons */}
+            <div className="flex items-center gap-4 text-sm">
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={handleLike}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
+                  isLiked
+                    ? 'bg-green-500/20 border-green-500/50 text-green-400'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:border-green-500/30 hover:text-green-400'
+                }`}
+              >
+                <svg className="w-5 h-5" fill={isLiked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z M4 22H2V11h2v11z" />
                 </svg>
-                <span>{videoData.likes} likes</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                <span>{likeCount}</span>
+              </motion.button>
+
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={handleDislike}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
+                  isDisliked
+                    ? 'bg-red-500/20 border-red-500/50 text-red-400'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:border-red-500/30 hover:text-red-400'
+                }`}
+              >
+                <svg className="w-5 h-5" fill={isDisliked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 15V19a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z M20 2h2v11h-2V2z" />
+                </svg>
+                <span>{dislikeCount}</span>
+              </motion.button>
+
+              <div className="flex items-center gap-2 text-gray-400">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
                 </svg>
                 <span>{videoData.views}</span>
@@ -229,33 +370,52 @@ const VideoDetailsPage = () => {
           {/* Sidebar - Related Videos */}
           <div className="space-y-4">
             <h3 className="text-xl font-semibold">Related Videos</h3>
-            <div className="space-y-4">
-              {relatedVideos.map((video) => (
-                <motion.div
-                  key={video.id}
-                  whileHover={{ scale: 1.02 }}
-                  className="flex gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors group"
-                >
-                  <div className="relative w-40 aspect-video rounded-lg overflow-hidden flex-shrink-0">
-                    <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
+            {relatedLoading ? (
+              <div className="text-center py-8">
+                <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                <p className="text-gray-500 text-sm">Loading...</p>
+              </div>
+            ) : relatedVideos.length === 0 ? (
+              <p className="text-gray-500 text-sm">No related videos available</p>
+            ) : (
+              <div className="space-y-4">
+                {relatedVideos.map((video) => (
+                  <motion.div
+                    key={video.id}
+                    whileHover={{ scale: 1.02 }}
+                    onClick={() => handleRelatedVideoClick(video)}
+                    className="flex gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors group"
+                  >
+                    <div className="relative w-40 aspect-video rounded-lg overflow-hidden flex-shrink-0">
+                      <img
+                        src={video.thumbnailUrl || `https://picsum.photos/300/200?random=${video.id}`}
+                        alt={video.title}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                      {video.durationInSeconds && (
+                        <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/80 text-xs rounded">
+                          {formatDuration(video.durationInSeconds)}
+                        </div>
+                      )}
                     </div>
-                    <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/80 text-xs rounded">
-                      {video.duration}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sm line-clamp-2 group-hover:text-green-500 transition-colors">
+                        {video.title}
+                      </h4>
+                      <p className="text-xs text-gray-500 mt-1">{formatViews(video.viewCount)} views</p>
+                      {video.rating && (
+                        <p className="text-xs text-yellow-400 mt-1">&#9733; {video.rating}</p>
+                      )}
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm line-clamp-2 group-hover:text-green-500 transition-colors">
-                      {video.title}
-                    </h4>
-                    <p className="text-xs text-gray-500 mt-1">{video.views} views</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
